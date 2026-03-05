@@ -1,0 +1,482 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Yorokobi Games</title>
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <style>
+    :root{
+      --bg:         #ddeef8;               /* page background        */
+      --panel:      #ffffff;               /* card / frame fill      */
+      --text:       #1c2333;               /* primary text           */
+      --muted:      #5a6a80;               /* secondary text         */
+      --border:     #1c2333;               /* strong outer borders   */
+      --border-soft:#b0c4d8;               /* subtle inner borders   */
+      --accent:     #0078d4;               /* Skype blue highlight   */
+      --accent-rgb: 0,120,212;             /* accent as R,G,B tuple  */
+      --thumb-bg:   #c8dff0;               /* placeholder tile fill  */
+      --shadow:     rgba(0,80,160,.10);    /* panel drop shadow      */
+      --maxw:       980px;
+    }
+    *{ box-sizing:border-box; }
+    body{
+      margin:0;
+      background: var(--bg);
+      color:var(--text);
+      font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial,sans-serif;
+    }
+    a{ color:inherit; text-decoration:none; }
+    a:focus{ outline:2px solid var(--accent); outline-offset:3px; }
+
+    .wrap{ max-width:var(--maxw); margin:0 auto; padding:28px 16px 40px; }
+
+    .frame{
+      border:1px solid var(--border);
+      background: var(--panel);
+      box-shadow:0 6px 20px var(--shadow);
+      border-radius:14px;
+    }
+
+    header.frame{ padding:18px 18px 16px; }
+    .brand{ display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; }
+    .brand-text{ display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
+    .brand-logo{ width:64px; height:64px; flex-shrink:0; image-rendering:pixelated; }
+    .title{ margin:0; font-size:44px; font-weight:800; line-height:1.05; letter-spacing:.5px; }
+    .subtitle{ margin:0; font-size:18px; color:var(--muted); font-weight:600; }
+
+    .topnav{ margin-top:10px; display:flex; gap:10px; flex-wrap:wrap; }
+    .topnav a{
+      padding:6px 10px;
+      border:1px solid var(--border-soft);
+      border-radius:999px;
+      background: rgba(var(--accent-rgb),.05);
+      color: var(--muted);
+    }
+    .topnav a:hover{ color:var(--text); border-color: var(--accent); }
+
+    .content.frame{ margin-top:18px; padding:16px 18px; }
+    .content h2{ margin:0 0 10px; font-size:18px; }
+    .tagline{ margin:10px 0 0; color:var(--muted); max-width:70ch; }
+
+    /* ── game grid ─────────────────────────────────────── */
+    .grid{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+    @media (min-width:720px){ .grid{ grid-template-columns:repeat(3,minmax(0,1fr)); } }
+    @media (min-width:980px){ .grid{ grid-template-columns:repeat(4,minmax(0,1fr)); } }
+
+    .card{
+      border:1px solid var(--border-soft);
+      background: var(--panel);
+      border-radius:14px;
+      overflow:hidden;
+      box-shadow:0 4px 14px var(--shadow);
+      transition: transform .12s ease, border-color .12s ease;
+      display:grid;
+      grid-template-rows:auto 1fr;
+      min-height:220px;
+    }
+    .card:hover{ transform:translateY(-2px); border-color: var(--accent); }
+
+    /* thumb: real screenshot OR styled placeholder glyph */
+    .thumb{
+      aspect-ratio:16/9; background:var(--thumb-bg);
+      border-bottom:1px solid var(--border-soft);
+      display:block; overflow:hidden;
+    }
+    .thumb img{
+      width:100%; height:100%;
+      object-fit:cover;
+      object-position: center 15%;
+      display:block;
+    }
+    .thumb-ph{
+      width:100%; height:100%;
+      display:flex; align-items:center; justify-content:center;
+      font-family: Consolas,"Courier New",monospace;
+      font-size:30px; color:rgba(var(--accent-rgb),.35);
+      background: linear-gradient(135deg,#cce4f5,#d8ecf8);
+      user-select:none;
+    }
+
+    .body{ padding:10px 12px 12px; display:grid; gap:6px; align-content:start; }
+    .name{ margin:0; font-weight:800; font-size:15px; }
+    .desc{ margin:0; color:var(--muted); font-size:13px; }
+
+    .chips{ display:flex; gap:6px; flex-wrap:wrap; margin-top:2px; }
+    .chip{
+      font-size:12px; border:1px solid var(--border-soft); background:rgba(var(--accent-rgb),.05);
+      padding:3px 8px; border-radius:999px; white-space:nowrap;
+    }
+    .chip.web{ border-color: rgba(var(--accent-rgb),.5); }
+    .chip.win{ border-color: rgba(255,140,0,.5); }
+    .chip.mob{ border-color: rgba(80,180,80,.5); }
+
+    .crumbs{ margin:0 0 10px; color:var(--muted); font-size:13px; }
+    .crumbs a{ text-decoration:underline; text-underline-offset:3px; color:var(--muted); }
+    .crumbs a:hover{ color:var(--text); }
+
+    .btn{
+      display:inline-block; padding:8px 12px;
+      border:1px solid var(--border-soft); border-radius:10px;
+      background:rgba(var(--accent-rgb),.05); margin-right:8px;
+      color:var(--text); cursor:pointer; font:inherit;
+    }
+    .btn:hover{ border-color: var(--accent); }
+    .btn.primary{
+      border-color: rgba(var(--accent-rgb),.7);
+      background: rgba(var(--accent-rgb),.12);
+    }
+    .btn.primary:hover{ background: rgba(var(--accent-rgb),.22); }
+
+    /* ── shell iframe (no extra wrapper frame) ─────────── */
+    .game-shell-wrap{
+      display:flex; flex-direction:column; align-items:center;
+      padding:2px 0 6px;
+    }
+    .game-shell-wrap iframe{
+      display:block; border:none; border-radius:10px;
+      width:760px; max-width:100%; height:442px;
+      background:var(--bg);
+      box-shadow: 0 8px 28px rgba(0,80,160,.18);
+    }
+
+    /* ── download / win32 view ──────────────────────────── */
+    .dl-view{
+      border:1px solid var(--border);
+      background: var(--panel);
+      box-shadow:0 6px 20px var(--shadow);
+      border-radius:14px;
+      overflow:hidden;
+    }
+    .dl-hero{
+      width:100%; aspect-ratio:16/6; background:var(--thumb-bg);
+      border-bottom:1px solid var(--border-soft); overflow:hidden;
+    }
+    .dl-hero img{ width:100%; height:100%; object-fit:cover; object-position:center 15%; display:block; }
+    .dl-hero-ph{
+      width:100%; height:100%;
+      display:flex; align-items:center; justify-content:center;
+      font-family:Consolas,"Courier New",monospace;
+      font-size:56px; color:rgba(var(--accent-rgb),.25);
+      background:linear-gradient(135deg,#cce4f5,#d8ecf8);
+    }
+    .dl-body{ padding:20px 24px 24px; }
+    .dl-title{ margin:0 0 6px; font-size:22px; font-weight:800; }
+    .dl-desc{ margin:0 0 16px; color:var(--muted); max-width:72ch; }
+    .dl-actions{ display:flex; gap:10px; flex-wrap:wrap; }
+
+    /* ── footer ────────────────────────────────────────── */
+    footer.frame{ margin-top:18px; padding:14px 18px; color:var(--muted); font-size:13px; }
+    .footerRow{ display:flex; flex-wrap:wrap; gap:10px 16px; align-items:center; justify-content:space-between; }
+    .footerLinks{ display:flex; gap:12px; flex-wrap:wrap; }
+    .footerLinks button{
+      border:none; background:none; padding:0;
+      color:var(--muted); text-decoration:underline; text-underline-offset:3px;
+      cursor:pointer; font:inherit;
+    }
+    .footerLinks button:hover{ color:var(--text); }
+    .footerPanel{ margin-top:12px; border-top:1px solid var(--border-soft); padding-top:12px; display:none; }
+    .footerPanel.open{ display:block; }
+    .panelTitle{ margin:0 0 6px; color:var(--text); font-weight:800; }
+    .panelText{ margin:0; color:var(--muted); }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+
+    <header class="frame">
+      <div class="brand">
+        <div class="brand-text">
+          <h1 class="title"><a href="#home">Yorokobi</a></h1>
+          <p class="subtitle">games</p>
+        </div>
+        <img class="brand-logo" src="assets/img/head/logo.png" alt="Yorokobi Games logo">
+      </div>
+      <p class="tagline">
+        Retro-inspired games somewhere between 1986-1998 vibes. Web minigames and polished desktop releases.
+      </p>
+      <nav class="topnav" aria-label="Primary">
+        <a href="#home">Home</a>
+        <a href="#games">Games</a>
+      </nav>
+    </header>
+
+    <main class="content frame" id="content" aria-live="polite">
+      <!-- filled by JS -->
+    </main>
+
+    <footer class="frame">
+      <div class="footerRow">
+        <div>© <span id="y"></span> Yorokobi Games</div>
+        <div class="footerLinks" aria-label="Footer links">
+          <button type="button" data-panel="contact">Contact</button>
+          <button type="button" data-panel="legal">Legal</button>
+          <button type="button" data-panel="privacy">Privacy</button>
+        </div>
+      </div>
+      <div class="footerPanel" id="footerPanel" role="region" aria-live="polite"></div>
+    </footer>
+
+  </div>
+
+  <script>
+    const contentEl     = document.getElementById("content");
+    const footerPanelEl = document.getElementById("footerPanel");
+
+    // ── game catalogue ────────────────────────────────────────────────────
+    // id       → hash route + maps to ./webgames/{id}/{id}.js
+    // type     → "web"   : loads the shell iframe
+    //            "win32" : shows screenshot + description + download links
+    // thumb    → path to screenshot image (optional, falls back to icon glyph)
+    // icon     → glyph shown in placeholder tile (monospace)
+    // download → (win32 only) { label, url }[]  list of download buttons
+    // ─────────────────────────────────────────────────────────────────────
+    const games = [
+      {
+        id:    "dungeon-crawler",
+        type:  "web",
+        name:  "Dungeon Crawler",
+        desc:  "ASCII roguelike. Collect all diamonds, survive four enemy types, use items to escape.",
+        chips: ["Web"],
+        icon:  "☻",
+        thumb: "./assets/img/thumbs/dungeon-crawler.png"
+      },
+      {
+        id:    "snake",
+        type:  "web",
+        name:  "Snake",
+        desc:  "Classic snake. Eat food to grow, don't hit yourself or the walls.",
+        chips: ["Web", "Mobile"],
+        icon:  "▓",
+        thumb: "./assets/img/thumbs/snake.png"
+      },
+      {
+        id:    "pong",
+        type:  "web",
+        name:  "Pong",
+        desc:  "Grid-based paddle game. Keep the ball alive — don't let it escape over the top.",
+        chips: ["Web"],
+        icon:  "●",
+        thumb: "./assets/img/thumbs/pong.png"
+      },
+      {
+        id:    "flappy",
+        type:  "web",
+        name:  "Flappy",
+        desc:  "Thread Flappy through pipe gaps without touching. Background by Paulina Riva: opengameart.org/users/paur",
+        chips: ["Web", "Mobile"],
+        icon:  "◌",
+        thumb: "./assets/img/thumbs/flappy.png"
+      },
+      {
+        id:    "shapes",
+        type:  "web",
+        name:  "Shapes",
+        desc:  "Place tetrominoes on an 8×8 board. Fill whole rows or columns to clear them and score.",
+        chips: ["Web"],
+        icon:  "□",
+        thumb: "./assets/img/thumbs/shapes.png"
+      },
+      {
+        id:    "15puzzle",
+        type:  "web",
+        name:  "15 Puzzle",
+        desc:  "Slide 15 tiles back into order on a 4×4 grid.",
+        chips: ["Web", "Mobile"],
+        icon:  "◫",
+        thumb: "./assets/img/thumbs/15puzzle.png"
+      },
+      {
+        id:    "eliminate",
+        type:  "web",
+        name:  "Eliminate",
+        desc:  "Click connected color groups to remove them. Board collapses inward. Score = removed².",
+        chips: ["Web"],
+        icon:  "◆",
+        thumb: "./assets/img/thumbs/eliminate.png"
+      },
+      {
+        id:    "sokoban",
+        type:  "web",
+        name:  "Sokoban",
+        desc:  "Push crates onto goal squares. Can you solve all 125 levels by 'Martí Homs Caussa' ?",
+        chips: ["Web", "Mobile"],
+        icon:  "+",
+        thumb: "./assets/img/thumbs/sokoban.png"
+      }
+
+      // ── example win32 entry (uncomment + fill in when you have a desktop game) ──
+      // {
+      //   id:       "my-desktop-game",
+      //   type:     "win32",
+      //   name:     "My Desktop Game",
+      //   desc:     "A polished desktop release for Windows.",
+      //   chips:    ["Win32"],
+      //   icon:     "▪",
+      //   thumb:    "./assets/img/thumbs/my-desktop-game.png",
+      //   download: [
+      //     { label: "Download v1.0 (Windows)", url: "./releases/my-desktop-game-1.0.zip" }
+      //   ]
+      // }
+    ];
+
+    // ── helpers ───────────────────────────────────────────────────────────
+    function escHtml(s){
+      return String(s).replace(/[&<>"']/g,
+        c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+    }
+
+    function chipHtml(arr){
+      return (arr||[]).map(c => {
+        let cls = "chip";
+        if(c.toLowerCase() === "web")    cls += " web";
+        if(c.toLowerCase() === "win32")  cls += " win";
+        if(c.toLowerCase() === "mobile") cls += " mob";
+        return `<span class="${cls}">${escHtml(c)}</span>`;
+      }).join("");
+    }
+
+    function thumbHtml(g){
+      if(g.thumb)
+        return `<span class="thumb"><img src="${escHtml(g.thumb)}" alt="${escHtml(g.name)} screenshot"></span>`;
+      return `<span class="thumb"><span class="thumb-ph">${escHtml(g.icon||"▓")}</span></span>`;
+    }
+
+    // ── views ─────────────────────────────────────────────────────────────
+    
+    function renderHome(){
+      contentEl.innerHTML = `
+        <h2>About</h2>
+        <p>I am having fun building small games with a classic feel. This is my hobby and every content here is entirely for free. </p>
+        <p>If you have any ideas, some suggestions or you found a bug in a game, please don't hesitate to contact me.</p>
+        <p>I am always happy about feedback :) </p>
+        <p class="crumbs" style="margin-top:10px;">Jump to: <a href="#games">Games</a></p>
+      `;
+    }
+
+    function renderGames(){
+      const cards = games.map(g => `
+        <a class="card" href="#play/${escHtml(g.id)}" aria-label="Play ${escHtml(g.name)}">
+          ${thumbHtml(g)}
+          <span class="body">
+            <p class="name">${escHtml(g.name)}</p>
+            <p class="desc">${escHtml(g.desc)}</p>
+            <span class="chips">${chipHtml(g.chips)}</span>
+          </span>
+        </a>
+      `).join("");
+
+      contentEl.innerHTML = `<h2>Games</h2><div class="grid">${cards}</div>`;
+    }
+
+    function renderPlay(gameId){
+      const g = games.find(x => x.id === gameId);
+      if(!g){
+        contentEl.innerHTML = `<p class="crumbs"><a href="#games">← Games</a></p><p>Game not found.</p>`;
+        return;
+      }
+
+      // win32 / download view
+      if(g.type === "win32"){
+        const heroHtml = g.thumb
+          ? `<div class="dl-hero"><img src="${escHtml(g.thumb)}" alt="${escHtml(g.name)} screenshot"></div>`
+          : `<div class="dl-hero"><div class="dl-hero-ph">${escHtml(g.icon||"▪")}</div></div>`;
+
+        const dlBtns = (g.download||[]).map(d =>
+          `<a class="btn primary" href="${escHtml(d.url)}" download>${escHtml(d.label)}</a>`
+        ).join("");
+
+        contentEl.innerHTML = `
+          <p class="crumbs"><a href="#games">← All games</a></p>
+          <div class="dl-view">
+            ${heroHtml}
+            <div class="dl-body">
+              <h2 class="dl-title">${escHtml(g.name)}</h2>
+              <p class="dl-desc">${escHtml(g.desc)}</p>
+              <div class="dl-actions">
+                ${dlBtns || `<span style="color:var(--muted);font-size:13px;">No downloads available yet.</span>`}
+              </div>
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      // web / shell view
+      const src = `./webgames/shell.html?game=${encodeURIComponent(g.id)}`;
+      contentEl.innerHTML = `
+        <p class="crumbs"><a href="#games">← All games</a></p>
+        <div class="game-shell-wrap">
+          <iframe
+            src="${escHtml(src)}"
+            title="${escHtml(g.name)}"
+            scrolling="no"
+          ></iframe>
+        </div>
+        <p style="margin-top:8px;color:var(--muted);font-size:13px;">${escHtml(g.desc)}</p>
+      `;
+    }
+
+    // ── footer panels ──────────────────────────────────────────────────────
+    function openFooterPanel(kind){
+      const panels = {
+        contact: `<p class="panelTitle">Contact</p>                 
+                  <p class="panelText">Email: <a href="mailto:contact@yorokobi-games.com"> <span style="color:var(--text)">contact@yorokobi-games.com</span> </a> </p>
+                  <p class="panelText">GitHub: <a href="https://github.com/rbreitinger"> <span style="color:var(--text)">github.com/rbreitinger</span> </a> </p>`,
+        legal:   `<p class="panelTitle">Legal / Impressum</p>
+                  <p class="panelText">Angaben gemäß § 5 TMG <br>
+                                       Rene Breitinger <br>
+                                       Lindenstr. 8 <br>
+                                       89180 Berghülen <br>
+                                       Deutschland <br>
+                                       Verantwortlich für den Inhalt nach § 55 Abs. 2 RStV: <br>
+                                       Rene Breitinger, Anschrift wie oben.</p>`,
+        privacy: `<p class="panelTitle">Privacy</p>
+                  <p class="panelText">This site does not use cookies, does not track you, and does not transmit any data to a server. <br>
+                                       Each game stores a single personal best value (score or time) directly in your browser using localStorage. <br>
+                                       This data never leaves your device. You can remove it at any time by clearing your browser's site <br>
+                                       data for this page — though doing so will also erase your personal bests. <br>
+                                       No analytics, no advertising, no third-party scripts - just like the web should be.</p>`
+      };
+      footerPanelEl.innerHTML = panels[kind] || "";
+      footerPanelEl.classList.add("open");
+    }
+
+    function closeFooterPanel(){
+      footerPanelEl.classList.remove("open");
+      footerPanelEl.innerHTML = "";
+    }
+
+    // ── router ─────────────────────────────────────────────────────────────
+    function route(){
+      const hash = location.hash.replace(/^#/, "");
+      closeFooterPanel();
+
+      if(!hash || hash === "home"){ renderHome();  return; }
+      if(hash === "games")        { renderGames(); return; }
+
+      const mPlay = hash.match(/^play\/(.+)$/);
+      if(mPlay){ renderPlay(mPlay[1]); return; }
+
+      renderHome();
+    }
+
+    document.addEventListener("click", e => {
+      const btn = e.target.closest("button[data-panel]");
+      if(!btn) return;
+      const kind = btn.getAttribute("data-panel");
+      if(footerPanelEl.classList.contains("open")){
+        const isSame = footerPanelEl.textContent.toLowerCase().includes(kind);
+        if(isSame) closeFooterPanel(); else openFooterPanel(kind);
+      } else {
+        openFooterPanel(kind);
+      }
+    });
+
+    window.addEventListener("hashchange", route);
+    document.getElementById("y").textContent = new Date().getFullYear();
+    route();
+  </script>
+</body>
+</html>
