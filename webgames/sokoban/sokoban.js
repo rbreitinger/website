@@ -1,8 +1,9 @@
 // =============================================================================
 // sokoban.js  —  shell-compatible Sokoban
 // Keyboard: Arrows push · Z undo · R retry level
-// Mobile:   D-pad buttons · swipe to move · UNDO / RETRY buttons
-// Shell RESET = "NEW GAME" (restart from level 1)
+// Mobile:   Swipe to move · PREV / NEXT / UNDO / RETRY sidebar buttons
+// Shell START  = resume from personal-best level (NEW GAME restarts at level 1)
+// Shell RESET  = "NEW GAME" (restart from level 1)
 //
 // Level file:  sokoban/sokoban.lev   (fetched at init)
 //
@@ -38,27 +39,22 @@ const SK_COL_CRATE_OUT  = "#AA5500";
 const SK_COL_CRATE_IN   = "#FFAA44";
 const SK_COL_PLACED_OUT = "#007733";
 const SK_COL_PLACED_IN  = "#55FF88";
-const SK_COL_PLAYER     = "#FFD24A";
+const SK_COL_PLAYER     = "#FFD24A";   // body fill
+const SK_COL_PLAYER_SH  = "#c89010";  // shadow / dark accent on body
 
-// ── mobile d-pad layout ───────────────────────────────────────────────────────
-// Sits between the stats block (ends ~y+102) and the shell buttons (y+214)
-const SK_DB_W   = 36;   // d-pad button width
-const SK_DB_H   = 22;   // d-pad button height
-const SK_DB_GAP = 3;    // gap between d-pad buttons
-// center the d-pad column within the sidebar
-const SK_DPAD_CX = SHELL_SBX + Math.floor((SHELL_SBW - SK_DB_W) / 2);  // 462
-const SK_DPAD_Y0 = SHELL_SBY + 108;                                      // 124
+// ── sidebar action buttons ────────────────────────────────────────────────────
+// Two rows of two buttons between the stats block and the shell buttons.
+// Available canvas y-space:  SHELL_SBY+108  to  +208.
+const SK_DB_GAP  = 4;
+const SK_ACT_W   = Math.floor((SHELL_SBW - SK_DB_GAP * 3) / 2);   // 74 px
+const SK_ACT_H   = 26;
+const SK_ROW1_Y  = SHELL_SBY + 110;                                 // 126 — PREV / NEXT
+const SK_ROW2_Y  = SK_ROW1_Y + SK_ACT_H + 6;                       // 158 — UNDO / RETRY
 
-const SK_DBTN_UP    = { x: SK_DPAD_CX,                          y: SK_DPAD_Y0,                              w: SK_DB_W, h: SK_DB_H };
-const SK_DBTN_LEFT  = { x: SK_DPAD_CX - SK_DB_W - SK_DB_GAP,   y: SK_DPAD_Y0 +   SK_DB_H + SK_DB_GAP,     w: SK_DB_W, h: SK_DB_H };
-const SK_DBTN_RIGHT = { x: SK_DPAD_CX + SK_DB_W + SK_DB_GAP,   y: SK_DPAD_Y0 +   SK_DB_H + SK_DB_GAP,     w: SK_DB_W, h: SK_DB_H };
-const SK_DBTN_DOWN  = { x: SK_DPAD_CX,                          y: SK_DPAD_Y0 + 2*(SK_DB_H + SK_DB_GAP),   w: SK_DB_W, h: SK_DB_H };
-
-// UNDO + RETRY side by side below the d-pad
-const SK_ACT_Y  = SK_DPAD_Y0 + 3 * (SK_DB_H + SK_DB_GAP) + 5;  // 204
-const SK_ACT_W  = Math.floor((SHELL_SBW - SK_DB_GAP * 3) / 2);  // 75
-const SK_DBTN_UNDO  = { x: SHELL_SBX + SK_DB_GAP,                  y: SK_ACT_Y, w: SK_ACT_W, h: SK_DB_H };
-const SK_DBTN_RETRY = { x: SHELL_SBX + SK_ACT_W + SK_DB_GAP * 2,   y: SK_ACT_Y, w: SK_ACT_W, h: SK_DB_H };
+const SK_DBTN_PREV  = { x: SHELL_SBX + SK_DB_GAP,               y: SK_ROW1_Y, w: SK_ACT_W, h: SK_ACT_H };
+const SK_DBTN_NEXT  = { x: SHELL_SBX + SK_ACT_W + SK_DB_GAP*2,  y: SK_ROW1_Y, w: SK_ACT_W, h: SK_ACT_H };
+const SK_DBTN_UNDO  = { x: SHELL_SBX + SK_DB_GAP,               y: SK_ROW2_Y, w: SK_ACT_W, h: SK_ACT_H };
+const SK_DBTN_RETRY = { x: SHELL_SBX + SK_ACT_W + SK_DB_GAP*2,  y: SK_ROW2_Y, w: SK_ACT_W, h: SK_ACT_H };
 
 // ── state ─────────────────────────────────────────────────────────────────────
 const SK_ST_IDLE    = 0;
@@ -81,6 +77,8 @@ let solvedMs = 0;
 let undoStack = [];
 let cdActive = false, cdMsLeft = 0, cdShown = 0;
 
+let _facingDir = "down";   // "up" | "down" | "left" | "right"
+
 let shellState = SK_ST_IDLE;
 let _acc = 0;
 let _cx;
@@ -101,12 +99,14 @@ const GAME = {
         _fetchLevels();
     },
 
+    // START: resume from personal-best level (or level 1 if no PB yet)
     start(){
         if(_loading || _loadErr || _levels.length === 0) return;
-        levelIdx = 0;
+        levelIdx = Math.min(pb, _levels.length - 1);
         _startLevel();
     },
 
+    // NEW GAME (shell RESET button): always restart from level 1
     reset(){
         if(_loading || _loadErr || _levels.length === 0) return;
         levelIdx = 0;
@@ -121,18 +121,16 @@ const GAME = {
 
     draw(){ _draw(); },
 
-    // d-pad + action buttons
+    // sidebar action buttons
     onClick(mx, my){
         if(shellState === SK_ST_IDLE) return;
-        if(_skPtIn(mx, my, SK_DBTN_UP))    { _tryMove(-gridW);       return; }
-        if(_skPtIn(mx, my, SK_DBTN_DOWN))  { _tryMove(+gridW);       return; }
-        if(_skPtIn(mx, my, SK_DBTN_LEFT))  { _tryMove(-1);           return; }
-        if(_skPtIn(mx, my, SK_DBTN_RIGHT)) { _tryMove(+1);           return; }
-        if(_skPtIn(mx, my, SK_DBTN_UNDO))  { _undo();                return; }
-        if(_skPtIn(mx, my, SK_DBTN_RETRY)) { _resetCurrentLevel();   return; }
+        if(_skPtIn(mx, my, SK_DBTN_PREV)){  if(levelIdx > 0)    _navLevel(-1); return; }
+        if(_skPtIn(mx, my, SK_DBTN_NEXT)){  if(levelIdx < pb)   _navLevel(+1); return; }
+        if(_skPtIn(mx, my, SK_DBTN_UNDO)){  _undo();                           return; }
+        if(_skPtIn(mx, my, SK_DBTN_RETRY)){ _resetCurrentLevel();              return; }
     },
 
-    // swipe also steers (bonus, same as d-pad)
+    // swipe steers the player
     onSwipe(dir){
         if(shellState === SK_ST_IDLE || cdActive || solved || allDone) return;
         if(dir === "up")    _tryMove(-gridW);
@@ -239,7 +237,8 @@ function _loadLevel(idx){
         }
     }
     moves = 0; elapsedMs = 0; solved = false;
-    undoStack = [];
+    undoStack  = [];
+    _facingDir = "down";
     _computeLayout();
 }
 
@@ -257,9 +256,12 @@ function _resetCurrentLevel(){
     solvedMs = 0;
 }
 
-// Secret level jump — + / - keys (not shown in subtitle)
-function _jumpLevel(dir){
-    levelIdx = Math.max(0, Math.min(_levels.length - 1, levelIdx + dir));
+// Navigate to an adjacent level — NEXT is capped at pb (last beaten level index)
+function _navLevel(dir){
+    const target = levelIdx + dir;
+    if(target < 0 || target >= _levels.length) return;
+    if(dir > 0 && target > pb) return;    // can't skip ahead of earned progress
+    levelIdx = target;
     _loadLevel(levelIdx);
     cdActive = true; cdMsLeft = SK_CD_MS; cdShown = Math.ceil(SK_CD_MS / 1000);
     solvedMs = 0; solved = false; allDone = false;
@@ -274,20 +276,27 @@ function _isSolved(){
 }
 
 function _saveUndo(){
-    undoStack.push({ p: playerIdx, m: mArr.slice() });
+    undoStack.push({ p: playerIdx, m: mArr.slice(), d: _facingDir });
     if(undoStack.length > 200) undoStack.shift();
 }
 
 function _undo(){
     if(!undoStack.length) return;
     const snap = undoStack.pop();
-    playerIdx = snap.p;
-    mArr      = snap.m;
-    moves     = Math.max(0, moves - 1);
+    playerIdx  = snap.p;
+    mArr       = snap.m;
+    _facingDir = snap.d;
+    moves      = Math.max(0, moves - 1);
 }
 
 function _tryMove(off){
     if(cdActive || solved || allDone) return;
+
+    // update facing direction from the attempted offset
+    if     (off === -1)    _facingDir = "left";
+    else if(off ===  1)    _facingDir = "right";
+    else if(off < 0)       _facingDir = "up";
+    else                   _facingDir = "down";
 
     const n = playerIdx + off;
     if(n < 0 || n >= mArr.length) return;
@@ -375,8 +384,6 @@ function _onKey(e){
     if(shellState === SK_ST_IDLE) return;
     if(e.key === 'z' || e.key === 'Z'){ e.preventDefault(); _undo();              return; }
     if(e.key === 'r' || e.key === 'R'){ e.preventDefault(); _resetCurrentLevel(); return; }
-    if(e.key === '+'                 ){ e.preventDefault(); _jumpLevel(+1);       return; }
-    if(e.key === '-'                 ){ e.preventDefault(); _jumpLevel(-1);       return; }
     if(e.key === 'ArrowLeft' ){ e.preventDefault(); _tryMove(-1);     return; }
     if(e.key === 'ArrowRight'){ e.preventDefault(); _tryMove(+1);     return; }
     if(e.key === 'ArrowUp'   ){ e.preventDefault(); _tryMove(-gridW); return; }
@@ -403,14 +410,64 @@ function _skDrawBtn(btn, label, active){
     _cx.textBaseline = "alphabetic";
 }
 
-function _drawDpad(){
-    const canMove = shellState === SK_ST_PLAYING && !cdActive && !solved && !allDone;
-    _skDrawBtn(SK_DBTN_UP,    "\u25B2", canMove);
-    _skDrawBtn(SK_DBTN_LEFT,  "\u25C4", canMove);
-    _skDrawBtn(SK_DBTN_RIGHT, "\u25BA", canMove);
-    _skDrawBtn(SK_DBTN_DOWN,  "\u25BC", canMove);
-    _skDrawBtn(SK_DBTN_UNDO,  "UNDO",   canMove && undoStack.length > 0);
-    _skDrawBtn(SK_DBTN_RETRY, "RETRY",  shellState === SK_ST_PLAYING);
+function _drawSidebarBtns(){
+    const playing = shellState === SK_ST_PLAYING;
+    const canMove = playing && !cdActive && !solved && !allDone;
+    _skDrawBtn(SK_DBTN_PREV,  "\u25C4 PREV", playing && levelIdx > 0);
+    _skDrawBtn(SK_DBTN_NEXT,  "NEXT \u25BA", playing && levelIdx < pb);
+    _skDrawBtn(SK_DBTN_UNDO,  "UNDO",        canMove && undoStack.length > 0);
+    _skDrawBtn(SK_DBTN_RETRY, "RETRY",       playing);
+}
+
+// ── player sprite ─────────────────────────────────────────────────────────────
+// Top-down view: round body, two eyes and a nose-dot pointing in _facingDir.
+// Everything is relative to CELL so it scales cleanly from ~10 px to 32 px.
+// At very small radii (r < 3) only the body circle is drawn.
+function _drawPlayer(px, py){
+    const cx  = px + CELL / 2;
+    const cy  = py + CELL / 2;
+    const pad = Math.max(2, Math.floor(CELL * 0.08));
+    const r   = CELL / 2 - pad - 1;   // body radius
+
+    // unit vector pointing in the facing direction
+    const fdx = _facingDir === "left" ? -1 : _facingDir === "right" ? 1 : 0;
+    const fdy = _facingDir === "up"   ? -1 : _facingDir === "down"  ? 1 : 0;
+
+    // perpendicular axis (for eye spread left/right of facing direction)
+    const pdx = -fdy;
+    const pdy =  fdx;
+
+    // drop shadow
+    _cx.fillStyle = "rgba(0,0,0,0.30)";
+    _cx.beginPath(); _cx.arc(cx + 1, cy + 1, r, 0, Math.PI * 2); _cx.fill();
+
+    // body
+    _cx.fillStyle = SK_COL_PLAYER;
+    _cx.beginPath(); _cx.arc(cx, cy, r, 0, Math.PI * 2); _cx.fill();
+
+    if(r < 3) return;   // too small for face detail
+
+    // face centre is shifted slightly toward the facing direction
+    const fcx = cx + fdx * r * 0.22;
+    const fcy = cy + fdy * r * 0.22;
+
+    // nose: darker filled circle at the leading edge
+    const noseR = Math.max(1, Math.round(r * 0.20));
+    _cx.fillStyle = SK_COL_PLAYER_SH;
+    _cx.beginPath();
+    _cx.arc(fcx + fdx * r * 0.52, fcy + fdy * r * 0.52, noseR, 0, Math.PI * 2);
+    _cx.fill();
+
+    // eyes: two dark dots spread along the perpendicular axis
+    const eyeR      = Math.max(1, Math.round(r * 0.16));
+    const eyeSpread = r * 0.32;
+    _cx.fillStyle = "#1c1008";
+    _cx.beginPath();
+    _cx.arc(fcx + pdx * eyeSpread, fcy + pdy * eyeSpread, eyeR, 0, Math.PI * 2);
+    _cx.fill();
+    _cx.beginPath();
+    _cx.arc(fcx - pdx * eyeSpread, fcy - pdy * eyeSpread, eyeR, 0, Math.PI * 2);
+    _cx.fill();
 }
 
 function _drawTile(tx, ty, ch, isPlayer){
@@ -454,14 +511,7 @@ function _drawTile(tx, ty, ch, isPlayer){
         _cx.moveTo(cx2, cy2-hr); _cx.lineTo(cx2, cy2+hr);
         _cx.stroke();
     }
-    if(isPlayer){
-        const r   = CELL/2 - pad - 1;
-        const cx2 = px + CELL/2, cy2 = py + CELL/2;
-        _cx.fillStyle = SK_COL_PLAYER;
-        _cx.beginPath(); _cx.arc(cx2, cy2, r, 0, Math.PI*2); _cx.fill();
-        _cx.fillStyle = "#000";
-        _cx.beginPath(); _cx.arc(cx2, cy2, r*0.45, 0, Math.PI*2); _cx.fill();
-    }
+    if(isPlayer) _drawPlayer(px, py);
 }
 
 function _drawBoard(){
@@ -489,7 +539,7 @@ function _drawSidebar(){
     _cx.fillText("TIME:  " + (elapsedMs/1000).toFixed(1) + "s",    sx, sy+36);
     _cx.fillText("MOVES: " + moves,                                 sx, sy+54);
     _cx.fillText("BEST:  LV" + (pb || "--"),                        sx, sy+86);
-    _drawDpad();
+    _drawSidebarBtns();
 }
 
 function _drawCountdown(){
@@ -531,10 +581,17 @@ function _drawIdleOverlay(){
     _cx.globalAlpha = 1.0;
     _cx.textAlign = "center";
     _cx.fillStyle = "#fff"; _cx.font = _uf(22);
-    _cx.fillText("SOKOBAN", SHELL_PFX + SHELL_PFW/2, SHELL_PFY + SHELL_PFH/2 - 24);
+    _cx.fillText("SOKOBAN", SHELL_PFX + SHELL_PFW/2, SHELL_PFY + SHELL_PFH/2 - 30);
     _cx.fillStyle = "#93a0b3"; _cx.font = _uf(12);
-    _cx.fillText("Push boxes \u25A1 onto goals \u25A6",       SHELL_PFX + SHELL_PFW/2, SHELL_PFY + SHELL_PFH/2 - 2);
-    _cx.fillText("Arrows \u00B7 Z undo \u00B7 R retry level", SHELL_PFX + SHELL_PFW/2, SHELL_PFY + SHELL_PFH/2 + 14);
+    _cx.fillText("Push boxes \u25A1 onto goals \u25A6",        SHELL_PFX + SHELL_PFW/2, SHELL_PFY + SHELL_PFH/2 - 8);
+    _cx.fillText("Arrows \u00B7 Z undo \u00B7 R retry level",  SHELL_PFX + SHELL_PFW/2, SHELL_PFY + SHELL_PFH/2 + 8);
+    if(pb > 0){
+        _cx.fillStyle = "#55FF88"; _cx.font = _uf(11);
+        _cx.fillText(
+            "START resumes at level " + (pb + 1),
+            SHELL_PFX + SHELL_PFW/2, SHELL_PFY + SHELL_PFH/2 + 26
+        );
+    }
     _cx.textAlign = "left";
 }
 
