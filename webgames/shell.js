@@ -16,6 +16,7 @@
 //       update(dt)      { },         // dt in ms; shell calls at fixed 10 ms steps
 //       draw()          { },         // render everything except the two buttons
 //       onClick(mx, my) { },         // optional; canvas tap/click outside buttons
+//       onDrag(mx, my)  { },         // optional; fired on mousemove (held) or touchmove
 //       onSwipe(dir)    { },         // optional; dir = "up"|"down"|"left"|"right"
 //   };
 //
@@ -26,7 +27,9 @@
 //   - Games must not start logic until start() is called
 //   - reset() always restarts immediately (no return to idle)
 //   - onClick(mx,my) receives canvas-space coords; fired on tap/click outside buttons
+//   - onDrag(mx,my)  receives canvas-space coords; fired on mousemove (while held) and touchmove
 //   - onSwipe(dir) receives direction string; fired when touch drag exceeds threshold
+//     note: onDrag and onSwipe/onClick are mutually exclusive per touch gesture
 // =============================================================================
 
 // ---------- shell color palette (edit here to retheme) ----------
@@ -147,13 +150,28 @@ function handleButtonInput(mx, my){
 }
 
 // ---------- mouse ----------
+let _mouseDown = false;
+
 canvas.addEventListener("mousedown", e => {
+    _mouseDown = true;
     const rc = canvas.getBoundingClientRect();
     const mx = (e.clientX - rc.left) * (SHELL_CW / rc.width);
     const my = (e.clientY - rc.top)  * (SHELL_CH / rc.height);
     if(handleButtonInput(mx, my)) return;
     if(typeof GAME !== "undefined" && typeof GAME.onClick === "function")
         GAME.onClick(mx, my);
+});
+
+canvas.addEventListener("mouseup",    () => { _mouseDown = false; });
+canvas.addEventListener("mouseleave", () => { _mouseDown = false; });
+
+document.addEventListener("mousemove", e => {
+    if(!_mouseDown) return;
+    const rc = canvas.getBoundingClientRect();
+    const mx = (e.clientX - rc.left) * (SHELL_CW / rc.width);
+    const my = (e.clientY - rc.top)  * (SHELL_CH / rc.height);
+    if(typeof GAME !== "undefined" && typeof GAME.onDrag === "function")
+        GAME.onDrag(mx, my);
 });
 
 // ---------- touch ----------
@@ -170,6 +188,17 @@ canvas.addEventListener("touchstart", e => {
     _touchStartY = my;
     // buttons respond on touchstart for snappy feel
     _touchWasButton = handleButtonInput(mx, my);
+}, { passive: false });
+
+canvas.addEventListener("touchmove", e => {
+    e.preventDefault();
+    if(_touchWasButton) return;
+    const rc = canvas.getBoundingClientRect();
+    const t  = e.changedTouches[0];
+    const mx = (t.clientX - rc.left) * (SHELL_CW / rc.width);
+    const my = (t.clientY - rc.top)  * (SHELL_CH / rc.height);
+    if(typeof GAME !== "undefined" && typeof GAME.onDrag === "function")
+        GAME.onDrag(mx, my);
 }, { passive: false });
 
 canvas.addEventListener("touchend", e => {

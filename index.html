@@ -230,6 +230,7 @@
     //            "win32" : shows screenshot + description + download links
     // thumb    → path to screenshot image (optional, falls back to icon glyph)
     // icon     → glyph shown in placeholder tile (monospace)
+    // chips    → "Desktop Browser" | "Touch Device" | "Win32"
     // download → (win32 only) { label, url }[]  list of download buttons
     // ─────────────────────────────────────────────────────────────────────
     const games = [
@@ -238,7 +239,7 @@
         type:  "web",
         name:  "Dungeon Crawler",
         desc:  "ASCII roguelike. Collect all diamonds, survive four enemy types, use items to escape.",
-        chips: ["Web"],
+        chips: ["Desktop Browser"],
         icon:  "☻",
         thumb: "./assets/img/thumbs/dungeon-crawler.png"
       },
@@ -247,7 +248,7 @@
         type:  "web",
         name:  "Snake",
         desc:  "Classic snake. Eat food to grow, don't hit yourself or the walls.",
-        chips: ["Web", "Mobile"],
+        chips: ["Desktop Browser", "Touch Device"],
         icon:  "▓",
         thumb: "./assets/img/thumbs/snake.png"
       },
@@ -256,16 +257,25 @@
         type:  "web",
         name:  "Pong",
         desc:  "Grid-based paddle game. Keep the ball alive — don't let it escape over the top.",
-        chips: ["Web"],
+        chips: ["Desktop Browser"],
         icon:  "●",
         thumb: "./assets/img/thumbs/pong.png"
+      },
+      {
+        id:    "breakout",
+        type:  "web",
+        name:  "Breakout",
+        desc:  "Clear all blocks with a bouncing ball. Build combos, earn bonus balls, survive 32 levels — don't let it drop.",
+        chips: ["Desktop Browser", "Touch Device"],
+        icon:  "*",
+        thumb: "./assets/img/thumbs/breakout.png"
       },
       {
         id:    "flappy",
         type:  "web",
         name:  "Flappy",
-        desc:  "Thread Flappy through pipe gaps without touching. Background by Paulina Riva: opengameart.org/users/paur",
-        chips: ["Web", "Mobile"],
+        desc:  "Thread Flappy through pipe gaps without touching. Background art by Paulina Riva (opengameart.org).",
+        chips: ["Desktop Browser", "Touch Device"],
         icon:  "◌",
         thumb: "./assets/img/thumbs/flappy.png"
       },
@@ -273,8 +283,8 @@
         id:    "shapes",
         type:  "web",
         name:  "Shapes",
-        desc:  "Place tetrominoes on an 8×8 board. Fill whole rows or columns to clear them and score.",
-        chips: ["Web"],
+        desc:  "Drag tetrominoes onto an 8×8 board. Fill whole rows or columns to clear them and score.",
+        chips: ["Desktop Browser", "Touch Device"],
         icon:  "□",
         thumb: "./assets/img/thumbs/shapes.png"
       },
@@ -283,7 +293,7 @@
         type:  "web",
         name:  "15 Puzzle",
         desc:  "Slide 15 tiles back into order on a 4×4 grid.",
-        chips: ["Web", "Mobile"],
+        chips: ["Desktop Browser", "Touch Device"],
         icon:  "◫",
         thumb: "./assets/img/thumbs/15puzzle.png"
       },
@@ -292,16 +302,16 @@
         type:  "web",
         name:  "Eliminate",
         desc:  "Click connected color groups to remove them. Board collapses inward. Score = removed².",
-        chips: ["Web"],
-        icon:  "◆",
+        chips: ["Desktop Browser", "Touch Device"],
+        icon:  "x",
         thumb: "./assets/img/thumbs/eliminate.png"
       },
       {
         id:    "sokoban",
         type:  "web",
         name:  "Sokoban",
-        desc:  "Push crates onto goal squares. Can you solve all 125 levels by 'Martí Homs Caussa' ?",
-        chips: ["Web", "Mobile"],
+        desc:  "Push crates onto goal squares. Can you solve all 58 levels by 'Laura Wheeler'?",
+        chips: ["Desktop Browser", "Touch Device"],
         icon:  "+",
         thumb: "./assets/img/thumbs/sokoban.png"
       }
@@ -330,9 +340,10 @@
     function chipHtml(arr){
       return (arr||[]).map(c => {
         let cls = "chip";
-        if(c.toLowerCase() === "web")    cls += " web";
-        if(c.toLowerCase() === "win32")  cls += " win";
-        if(c.toLowerCase() === "mobile") cls += " mob";
+        const cl = c.toLowerCase();
+        if(cl === "desktop browser") cls += " web";
+        if(cl === "win32")           cls += " win";
+        if(cl === "touch device")    cls += " mob";
         return `<span class="${cls}">${escHtml(c)}</span>`;
       }).join("");
     }
@@ -344,13 +355,13 @@
     }
 
     // ── views ─────────────────────────────────────────────────────────────
-    
+
     function renderHome(){
       contentEl.innerHTML = `
         <h2>About</h2>
-        <p>I am having fun building small games with a classic feel. This is my hobby and every content here is entirely for free. </p>
-        <p>If you have any ideas, some suggestions or you found a bug in a game, please don't hesitate to contact me.</p>
-        <p>I am always happy about feedback :) </p>
+        <p>I am having fun building small games with a classic feel. This is my hobby and all content here is entirely free.</p>
+        <p>If you have any ideas, suggestions or found a bug in a game, please don't hesitate to contact me.</p>
+        <p>I am always happy about feedback :)</p>
         <p class="crumbs" style="margin-top:10px;">Jump to: <a href="#games">Games</a></p>
       `;
     }
@@ -421,9 +432,9 @@
     // ── footer panels ──────────────────────────────────────────────────────
     function openFooterPanel(kind){
       const panels = {
-        contact: `<p class="panelTitle">Contact</p>                 
-                  <p class="panelText"> <a href="mailto:contact@yorokobi-games.com"> <span style="color:var(--text)">Email</span> </a> </p>
-                  <p class="panelText"> <a href="https://github.com/yorokobi-games"> <span style="color:var(--text)">GitHub</span> </a> </p>`,
+        contact: `<p class="panelTitle">Contact</p>
+                  <p class="panelText"><a href="mailto:contact@yorokobi-games.com"><span style="color:var(--text)">Email</span></a></p>
+                  <p class="panelText"><a href="https://github.com/yorokobi-games"><span style="color:var(--text)">GitHub</span></a></p>`,
         legal:   `<p class="panelTitle">Legal / Impressum</p>
                   <p class="panelText">Angaben gemäß § 5 TMG <br>
                                        Rene Breitinger <br>
@@ -437,7 +448,7 @@
                                        Each game stores a single personal best value (score or time) directly in your browser using localStorage. <br>
                                        This data never leaves your device. You can remove it at any time by clearing your browser's site <br>
                                        data for this page — though doing so will also erase your personal bests. <br>
-                                       No analytics, no advertising, no third-party scripts - just like the web should be.</p>`
+                                       No analytics, no advertising, no third-party scripts — just like the web should be.</p>`
       };
       footerPanelEl.innerHTML = panels[kind] || "";
       footerPanelEl.classList.add("open");

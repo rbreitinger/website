@@ -5,9 +5,9 @@
 // =============================================================================
 
 // ---------- board geometry (built on top of shell constants) ----------
-const CELLPX = 20;
-const GCOLS  = Math.floor(SHELL_PFW / CELLPX);   // 18
-const GROWS  = Math.floor(SHELL_PFH / CELLPX);   // 14
+const CELLPX = 30;
+const GCOLS  = Math.floor(SHELL_PFW / CELLPX);   // 12
+const GROWS  = Math.floor(SHELL_PFH / CELLPX);   // 9
 const BW     = GCOLS * CELLPX;
 const BH     = GROWS * CELLPX;
 const BX     = SHELL_PFX + Math.floor((SHELL_PFW - BW) / 2);
@@ -55,8 +55,7 @@ let slideToggle;
 // countdown
 let cdActive, cdMsLeft, cdShown;
 
-// mouse
-let mouseDownCell = null;
+// mouse — handled via GAME.onClick (called by shell for both mouse and touch)
 
 let _cv, _cx;
 
@@ -72,8 +71,6 @@ const GAME = {
         _cx = canvas.getContext("2d");
         pb  = SHELL_getPB(PB_KEY) || 0;
         _buildIdleGrid();
-        _cv.addEventListener("mousedown", _onMouseDown);
-        _cv.addEventListener("mouseup",   _onMouseUp);
     },
 
     start(){ _resetAll(); },
@@ -82,6 +79,16 @@ const GAME = {
     update(dt){
         if(shellPhase === "idle") return;
         _updateStep(dt);
+    },
+
+    // called by shell for touch taps (coords already in canvas-space)
+    onClick(mx, my){
+        if(shellPhase === "idle") return;
+        if(cdActive || gameOver) return;
+        const cell = _screenToGrid(mx, my);
+        if(!cell) return;
+        cursorX = cell.gx; cursorY = cell.gy;
+        _doAction();
     },
 
     draw(){ _draw(); }
@@ -116,14 +123,36 @@ function _resetAll(){
     cdActive  = 1; cdMsLeft = 3000; cdShown = 3;
 }
 
+function _fixSingles(colors){
+    // Scan every cell; if it has no same-color neighbour, recolor it to match
+    // a random neighbour. Repeat 3 times — fixing one cell can expose another.
+    // Minimum intervention: boards stay random/messy, no guaranteed-stuck cells.
+    for(let pass = 0; pass < 3; pass++){
+        for(let y = 1; y <= GROWS; y++){
+            for(let x = 1; x <= GCOLS; x++){
+                if(_checkAdjacent(x, y)) continue;
+                const nb = [];
+                if(x > 1)     nb.push(grid[x-1][y]);
+                if(x < GCOLS) nb.push(grid[x+1][y]);
+                if(y > 1)     nb.push(grid[x][y-1]);
+                if(y < GROWS) nb.push(grid[x][y+1]);
+                if(nb.length === 0) continue;
+                grid[x][y] = nb[Math.floor(Math.random() * nb.length)];
+            }
+        }
+    }
+}
+
 function _startNextLevel(){
     level++;
-    const colors = Math.min(level + 2, 7);
+    // L1=3 colors, L2=4, L3=5, L4+=6
+    const colors = Math.min(level + 2, 6);
     remaining = GCOLS * GROWS;
     cLeft = 1; cRight = GCOLS;
     for(let y = 1; y <= GROWS; y++)
         for(let x = 1; x <= GCOLS; x++)
             grid[x][y] = Math.floor(Math.random() * colors) + 1;
+    _fixSingles(colors);
     nextLevel = 0;
 }
 
@@ -205,7 +234,11 @@ function _doFallAndSlide(){
             if(!hasMoves){
                 if(remaining === 0) score += 2500;
                 nextLevel = 1;
-                if(level > 0 && remaining > (10 + level - 1)){
+                // mercy ramp — tightens every level until L9+ requires full clear
+                // L1-L4: 10 cells, L5: 7, L6: 5, L7: 3, L8: 1, L9+: 0
+                const _mercy = [10, 10, 10, 10, 7, 5, 3, 1];
+                const maxLeft = level <= _mercy.length ? _mercy[level - 1] : 0;
+                if(level > 0 && remaining > maxLeft){
                     gameOver = 1;
                     cdActive = 0;
                     if(score > pb){ pb = score; SHELL_setPB(PB_KEY, pb); }
@@ -247,24 +280,6 @@ function _screenToGrid(mx, my){
     const gy = 1 + Math.floor((my - BY) / CELLPX);
     if(gx < 1 || gx > GCOLS || gy < 1 || gy > GROWS) return null;
     return { gx, gy };
-}
-
-function _onMouseDown(e){
-    if(shellPhase === "idle") return;
-    if(cdActive || gameOver) return;
-    const rc = _cv.getBoundingClientRect();
-    mouseDownCell = _screenToGrid(e.clientX - rc.left, e.clientY - rc.top) || null;
-}
-
-function _onMouseUp(e){
-    if(!mouseDownCell) return;
-    const rc   = _cv.getBoundingClientRect();
-    const cell = _screenToGrid(e.clientX - rc.left, e.clientY - rc.top);
-    if(cell && cell.gx === mouseDownCell.gx && cell.gy === mouseDownCell.gy){
-        cursorX = cell.gx; cursorY = cell.gy;
-        _doAction();
-    }
-    mouseDownCell = null;
 }
 
 // =============================================================================
