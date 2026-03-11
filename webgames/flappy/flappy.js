@@ -130,8 +130,10 @@ function _flap(){
     if(!_alive || _cdActive || _state === FL_ST_IDLE) return;
     _vel           = FL_FLAP_VEL;
     _birdFlapTicks = FL_FLAP_TICKS;
-    FL_SND_FLAP.currentTime = 0;
-    FL_SND_FLAP.play();
+    if (!SHELL_isMuted()) {
+      FL_SND_FLAP.currentTime = 0;
+      FL_SND_FLAP.play();
+    }
 }
 
 function _updateStep(dt){

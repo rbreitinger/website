@@ -111,7 +111,9 @@ const BRK_SND_GAMEOVER = new Audio("breakout/gameover.ogg");
 const BRK_SND_CLEAR    = new Audio("breakout/clear.ogg");
 const BRK_SND_HISCORE  = new Audio("breakout/hiscore.ogg");
 
-function brkSnd(snd) { snd.currentTime = 0; snd.play().catch(() => {}); }
+function brkSnd(snd) {
+    if (!SHELL_isMuted()) { snd.currentTime = 0; snd.play().catch(() => {}); }
+}
 
 // =============================================================================
 // LEVEL DATA

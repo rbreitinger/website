@@ -136,9 +136,11 @@ function _pzTryMove(idx){
     [_pzTiles[ei], _pzTiles[idx]] = [_pzTiles[idx], _pzTiles[ei]];
     _pzMoves++;
     
-    PZ_SND_MOVE.currentTime = 0;
-    PZ_SND_MOVE.play();
-    
+    if (!SHELL_isMuted()) {
+      PZ_SND_MOVE.currentTime = 0;
+      PZ_SND_MOVE.play();
+    }
+     
     if(_pzIsSolved()){
         _pzSolved = true;
         if(_pzPb === 0 || _pzElapsedMs < _pzPb){
