@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+  <title>Yorokobi Games</title>
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <style>
+    :root {
+      --bg:          #ddeef8;
+      --panel:       #f5f9fc;
+      --text:        #1c2333;
+      --muted:       #5a6a80;
+      --border:      #1c2333;
+      --border-soft: #b0c4d8;
+      --accent:      #0078d4;
+      --accent-rgb:  0,120,212;
+      --topbar-h:    50px;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Consolas, "Lucida Console", "Courier New", monospace;
+    }
+
+    /* ── top bar ────────────────────────────────────── */
+    .topbar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: var(--topbar-h);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 12px;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border-soft);
+      z-index: 10;
+      gap: 8px;
+    }
+    .tb-side {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    .tb-center {
+      flex: 1;
+      text-align: center;
+      min-width: 0;
+      overflow: hidden;
+    }
+    .tb-title {
+      display: block;
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .tb-sub {
+      display: block;
+      font-size: 11px;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      letter-spacing: .4px;
+    }
+
+    .back-btn {
+      display: inline-flex;
+      align-items: center;
+      padding: 5px 11px;
+      border: 1px solid var(--border-soft);
+      border-radius: 999px;
+      color: var(--muted);
+      text-decoration: none;
+      font: 12px Consolas, monospace;
+      white-space: nowrap;
+      transition: color .1s, border-color .1s;
+    }
+    .back-btn:hover { color: var(--text); border-color: var(--accent); }
+
+    .icon-btn {
+      width: 36px;
+      height: 36px;
+      border: 1px solid var(--border-soft);
+      border-radius: 8px;
+      background: rgba(var(--accent-rgb), .05);
+      color: var(--muted);
+      cursor: pointer;
+      font: 14px/1 Consolas, "Lucida Console", monospace;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: color .1s, border-color .1s, background .1s;
+      flex-shrink: 0;
+      letter-spacing: 0;
+    }
+    .icon-btn:hover { color: var(--text); border-color: var(--accent); }
+    .icon-btn.on {
+      border-color: rgba(var(--accent-rgb), .6);
+      background: rgba(var(--accent-rgb), .12);
+      color: var(--accent);
+    }
+
+    /* ── game stage ─────────────────────────────────── */
+    .stage {
+      position: fixed;
+      top: var(--topbar-h);
+      left: 0; right: 0; bottom: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* logical resolution 560x320; CSS width/height set by applyScale() */
+    canvas {
+      display: block;
+      background: var(--panel);
+      border: 2px solid var(--border);
+      border-radius: 8px;
+      box-shadow: 0 6px 28px rgba(0,80,160,.15);
+    }
+
+    /* ── fullscreen: hide topbar, reclaim viewport ───── */
+    :fullscreen          .topbar, :fullscreen          .topbar { display: none; }
+    :fullscreen          .stage                                 { top: 0; }
+    :-webkit-full-screen .topbar                                { display: none; }
+    :-webkit-full-screen .stage                                 { top: 0; }
+    :-moz-full-screen    .topbar                                { display: none; }
+    :-moz-full-screen    .stage                                 { top: 0; }
+  </style>
+</head>
+<body>
+
+  <header class="topbar">
+    <div class="tb-side">
+      <a class="back-btn" id="backBtn" href="index.html">&#8592; Games</a>
+    </div>
+    <div class="tb-center">
+      <span class="tb-title" id="gameTitle">Loading&#8230;</span>
+      <span class="tb-sub"   id="gameSubtitle"></span>
+    </div>
+    <div class="tb-side">
+      <button class="icon-btn" id="btnMute" title="Toggle sound">&#9834;</button>
+      <button class="icon-btn" id="btnFS"   title="Toggle fullscreen">[ ]</button>
+    </div>
+  </header>
+
+  <main class="stage" id="stage">
+    <canvas id="gameCanvas" width="560" height="320"></canvas>
+  </main>
+
+  <script>
+  // ================================================================
+  // game.html — standalone game player
+  //
+  // Shell logic is embedded here (ported from shell.js) with two
+  // differences:
+  //   1. loadGame() resolves paths as ./webgames/{id}/{id}.js
+  //   2. Adds SHELL_isMuted(), viewport scaling, fullscreen support
+  //
+  // shell.js itself is NOT modified; the webgames/*.js files are
+  // NOT modified. This file is fully self-contained.
+  // ================================================================
+
+  // ── mute ─────────────────────────────────────────────────────────
+  // Games that support sound can call SHELL_isMuted() each frame.
+  // The current nine games have no audio, so this is future-ready.
+  let   _muted  = false;
+  const btnMute = document.getElementById("btnMute");
+
+  function SHELL_isMuted() { return _muted; }
+
+  btnMute.addEventListener("click", () => {
+    _muted = !_muted;
+    btnMute.innerHTML = _muted ? "&#8416;" : "&#9834;";   // ♠̶  vs ♪
+    btnMute.title     = _muted ? "Sound off (click to enable)" : "Sound on (click to mute)";
+    btnMute.classList.toggle("on", _muted);
+  });
+
+  // ── fullscreen ───────────────────────────────────────────────────
+  const btnFS = document.getElementById("btnFS");
+
+  btnFS.addEventListener("click", () => {
+    if(!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen();
+    }
+  });
+
+  document.addEventListener("fullscreenchange", () => {
+    const inFS = !!document.fullscreenElement;
+    btnFS.textContent = inFS ? "[X]" : "[ ]";
+    btnFS.title       = inFS ? "Exit fullscreen" : "Fullscreen";
+    btnFS.classList.toggle("on", inFS);
+    scheduleScale();
+  });
+
+  // ── canvas scaling ───────────────────────────────────────────────
+  // The canvas logical resolution stays 560x320 at all times.
+  // Only the CSS display size changes, so game coordinate math is
+  // never affected. Input coords are de-scaled back in each handler
+  // using rc.width / SHELL_CW (already done in original shell.js).
+  const TOPBAR_H  = 50;
+  const LOGICAL_W = 560;
+  const LOGICAL_H = 320;
+  const canvas    = document.getElementById("gameCanvas");
+
+  function applyScale() {
+    const inFS   = !!document.fullscreenElement;
+    const margin = 12;
+    const availW = window.innerWidth  - margin * 2;
+    const availH = window.innerHeight - (inFS ? margin : TOPBAR_H + margin);
+    const scale  = Math.min(availW / LOGICAL_W, availH / LOGICAL_H);
+    canvas.style.width  = Math.floor(LOGICAL_W * scale) + "px";
+    canvas.style.height = Math.floor(LOGICAL_H * scale) + "px";
+  }
+
+  let _scaleTimer;
+  function scheduleScale() {
+    clearTimeout(_scaleTimer);
+    _scaleTimer = setTimeout(applyScale, 80);
+  }
+
+  window.addEventListener("resize",            scheduleScale);
+  window.addEventListener("orientationchange", scheduleScale);
+  if(screen.orientation) screen.orientation.addEventListener("change", scheduleScale);
+  applyScale();
+
+  // back-button href is set inside loadGame() after <base> is injected
+
+  // ================================================================
+  // Shell machinery — ported from shell.js, path fix applied
+  // ================================================================
+
+  const CLR_BG                = "#f5f9fc";
+  const CLR_BTN_ACTIVE        = "#0078d4";
+  const CLR_BTN_IDLE          = "#ddeef8";
+  const CLR_BTN_BORDER_ACTIVE = "#005a9e";
+  const CLR_BTN_BORDER_IDLE   = "#b0c4d8";
+  const CLR_BTN_TEXT_ACTIVE   = "#ffffff";
+  const CLR_BTN_TEXT_IDLE     = "#8a9ab0";
+  const CLR_ERROR             = "#cc2200";
+
+  const ctx     = canvas.getContext("2d");
+  const titleEl = document.getElementById("gameTitle");
+  const subEl   = document.getElementById("gameSubtitle");
+
+  // layout constants (games may read these)
+  const SHELL_CW  = 560, SHELL_CH  = 320;
+  const SHELL_PFX = 16,  SHELL_PFY = 16, SHELL_PFW = 360, SHELL_PFH = 288;
+  const SHELL_SBX = 400, SHELL_SBY = 16, SHELL_SBW = 160;
+
+  const BTN_W       = 136;
+  const BTN_H       = 30;
+  const BTN_X       = SHELL_SBX + Math.floor((SHELL_SBW - BTN_W) / 2);
+  const BTN_START_Y = SHELL_SBY + 214;
+  const BTN_RESET_Y = SHELL_SBY + 252;
+
+  const SHELL_BTN_X     = BTN_X;
+  const SHELL_BTN_TOP_Y = BTN_START_Y;
+
+  // personal best storage
+  function SHELL_getPB(key)        { try{ return JSON.parse(localStorage.getItem("pb_" + key)); }catch(e){ return null; } }
+  function SHELL_setPB(key, value) { try{ localStorage.setItem("pb_" + key, JSON.stringify(value)); }catch(e){} }
+
+  const BTN_START = { x: BTN_X, y: BTN_START_Y, w: BTN_W, h: BTN_H };
+  const BTN_RESET = { x: BTN_X, y: BTN_RESET_Y, w: BTN_W, h: BTN_H };
+
+  let shellPhase = "idle";
+
+  const SHELL_STEP_MS = 10;
+  let accMs  = 0;
+  let lastTs = 0;
+
+  // ── game loading ──────────────────────────────────────────────────
+  // Problem: game.html is at root, but game scripts use relative asset
+  // paths (images, sounds) that were authored relative to the old
+  // shell.html at ./webgames/shell.html — e.g. "snake/sprite.png".
+  //
+  // Fix: inject <base href="./webgames/"> so all relative URLs inside
+  // game scripts resolve from ./webgames/ as they always did.
+  // The script tag itself uses an absolute URL so it is unaffected.
+  // The back-button already uses an absolute URL for the same reason.
+  // Zero changes to any game file required.
+  function loadGame(gameId) {
+    // Absolute base URL of ./webgames/ relative to this page's location
+    const webgamesBase = new URL("./webgames/", location.href).href;
+
+    // Inject <base> so game asset paths resolve from ./webgames/
+    const baseTag  = document.createElement("base");
+    baseTag.href   = webgamesBase;
+    document.head.insertBefore(baseTag, document.head.firstChild);
+
+    // Back-button must be absolute now that <base> has changed
+    const backBtn  = document.getElementById("backBtn");
+    backBtn.href   = new URL("index.html#game/" + encodeURIComponent(gameId), location.href).href;
+
+    // Script src must also be absolute — relative would resolve via <base>
+    const script   = document.createElement("script");
+    script.src     = webgamesBase + gameId + "/" + gameId + ".js";
+    script.onload  = () => {
+      if(typeof GAME === "undefined") {
+        showError("Game loaded but GAME object not found.");
+        return;
+      }
+      titleEl.textContent = GAME.title    || gameId;
+      subEl.textContent   = GAME.subtitle || "";
+      document.title      = (GAME.title || gameId) + " \u2014 Yorokobi Games";
+      GAME.init(canvas);
+      requestAnimationFrame(loop);
+    };
+    script.onerror = () => showError("Could not load: webgames/" + gameId + "/" + gameId + ".js");
+    document.body.appendChild(script);
+  }
+
+  function showError(msg) {
+    titleEl.textContent = "Error";
+    ctx.fillStyle    = CLR_BG;
+    ctx.fillRect(0, 0, SHELL_CW, SHELL_CH);
+    ctx.fillStyle    = CLR_ERROR;
+    ctx.font         = "14px Consolas,monospace";
+    ctx.textAlign    = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(msg, SHELL_CW / 2, SHELL_CH / 2);
+    ctx.textAlign    = "left";
+    ctx.textBaseline = "alphabetic";
+  }
+
+  // ── buttons ───────────────────────────────────────────────────────
+  function drawBtn(btn, label, active) {
+    ctx.fillStyle = active ? CLR_BTN_ACTIVE : CLR_BTN_IDLE;
+    ctx.fillRect(btn.x, btn.y, btn.w, btn.h);
+    ctx.strokeStyle = active ? CLR_BTN_BORDER_ACTIVE : CLR_BTN_BORDER_IDLE;
+    ctx.lineWidth   = 1;
+    ctx.strokeRect(btn.x, btn.y, btn.w, btn.h);
+    ctx.fillStyle    = active ? CLR_BTN_TEXT_ACTIVE : CLR_BTN_TEXT_IDLE;
+    ctx.font         = "13px Consolas,'Lucida Console',monospace";
+    ctx.textAlign    = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(label, btn.x + btn.w / 2, btn.y + btn.h / 2);
+    ctx.textAlign    = "left";
+    ctx.textBaseline = "alphabetic";
+  }
+
+  function drawButtons() {
+    const resetLabel = (typeof GAME !== "undefined" && GAME.resetLabel) || "RESET";
+    drawBtn(BTN_START, "START",     shellPhase === "idle");
+    drawBtn(BTN_RESET, resetLabel,  shellPhase === "running");
+  }
+
+  // ── input helpers ─────────────────────────────────────────────────
+  function ptInBtn(mx, my, btn) {
+    return mx >= btn.x && my >= btn.y && mx < btn.x + btn.w && my < btn.y + btn.h;
+  }
+
+  function handleButtonInput(mx, my) {
+    if(ptInBtn(mx, my, BTN_START) && shellPhase === "idle") {
+      shellPhase = "running";
+      GAME.start();
+      return true;
+    }
+    if(ptInBtn(mx, my, BTN_RESET) && shellPhase === "running") {
+      GAME.reset();
+      return true;
+    }
+    return false;
+  }
+
+  // ── mouse ─────────────────────────────────────────────────────────
+  let _mouseDown = false;
+
+  canvas.addEventListener("mousedown", e => {
+    _mouseDown = true;
+    const rc = canvas.getBoundingClientRect();
+    const mx = (e.clientX - rc.left) * (SHELL_CW / rc.width);
+    const my = (e.clientY - rc.top)  * (SHELL_CH / rc.height);
+    if(handleButtonInput(mx, my)) return;
+    if(typeof GAME !== "undefined" && typeof GAME.onClick === "function")
+      GAME.onClick(mx, my);
+  });
+
+  canvas.addEventListener("mouseup",    () => { _mouseDown = false; });
+  canvas.addEventListener("mouseleave", () => { _mouseDown = false; });
+
+  document.addEventListener("mousemove", e => {
+    if(!_mouseDown) return;
+    const rc = canvas.getBoundingClientRect();
+    const mx = (e.clientX - rc.left) * (SHELL_CW / rc.width);
+    const my = (e.clientY - rc.top)  * (SHELL_CH / rc.height);
+    if(typeof GAME !== "undefined" && typeof GAME.onDrag === "function")
+      GAME.onDrag(mx, my);
+  });
+
+  // ── touch ─────────────────────────────────────────────────────────
+  const SWIPE_MIN_PX  = 20;
+  let _touchStartX    = 0, _touchStartY = 0, _touchWasButton = false;
+
+  canvas.addEventListener("touchstart", e => {
+    e.preventDefault();
+    const rc = canvas.getBoundingClientRect();
+    const t  = e.changedTouches[0];
+    const mx = (t.clientX - rc.left) * (SHELL_CW / rc.width);
+    const my = (t.clientY - rc.top)  * (SHELL_CH / rc.height);
+    _touchStartX    = mx;
+    _touchStartY    = my;
+    _touchWasButton = handleButtonInput(mx, my);
+  }, { passive: false });
+
+  canvas.addEventListener("touchmove", e => {
+    e.preventDefault();
+    if(_touchWasButton) return;
+    const rc = canvas.getBoundingClientRect();
+    const t  = e.changedTouches[0];
+    const mx = (t.clientX - rc.left) * (SHELL_CW / rc.width);
+    const my = (t.clientY - rc.top)  * (SHELL_CH / rc.height);
+    if(typeof GAME !== "undefined" && typeof GAME.onDrag === "function")
+      GAME.onDrag(mx, my);
+  }, { passive: false });
+
+  canvas.addEventListener("touchend", e => {
+    e.preventDefault();
+    if(_touchWasButton) return;
+    const rc = canvas.getBoundingClientRect();
+    const t  = e.changedTouches[0];
+    const mx = (t.clientX - rc.left) * (SHELL_CW / rc.width);
+    const my = (t.clientY - rc.top)  * (SHELL_CH / rc.height);
+    const dx   = mx - _touchStartX;
+    const dy   = my - _touchStartY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    if(dist >= SWIPE_MIN_PX) {
+      if(typeof GAME !== "undefined" && typeof GAME.onSwipe === "function") {
+        let dir;
+        if(Math.abs(dx) >= Math.abs(dy)) dir = dx > 0 ? "right" : "left";
+        else                              dir = dy > 0 ? "down"  : "up";
+        GAME.onSwipe(dir);
+      }
+    } else {
+      if(typeof GAME !== "undefined" && typeof GAME.onClick === "function")
+        GAME.onClick(mx, my);
+    }
+  }, { passive: false });
+
+  // ── RAF loop ──────────────────────────────────────────────────────
+  function loop(ts) {
+    if(!lastTs) lastTs = ts;
+    let delta = ts - lastTs;
+    lastTs = ts;
+    if(delta > 250) delta = 250;
+
+    accMs += delta;
+    while(accMs >= SHELL_STEP_MS) {
+      GAME.update(SHELL_STEP_MS);
+      accMs -= SHELL_STEP_MS;
+    }
+
+    GAME.draw();
+    drawButtons();
+    requestAnimationFrame(loop);
+  }
+
+  // ── boot ──────────────────────────────────────────────────────────
+  (function boot() {
+    const params = new URLSearchParams(window.location.search);
+    const gameId = params.get("id") || params.get("game");
+    if(!gameId) {
+      showError("No game specified.  Use: game.html?id=snake");
+      requestAnimationFrame(() => {
+        ctx.fillStyle = CLR_BG;
+        ctx.fillRect(0, 0, SHELL_CW, SHELL_CH);
+        drawButtons();
+      });
+      return;
+    }
+    loadGame(gameId);
+  }());
+
+  </script>
+</body>
+</html>

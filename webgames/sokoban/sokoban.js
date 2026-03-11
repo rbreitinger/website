@@ -39,7 +39,7 @@ const SK_COL_CRATE_OUT  = "#AA5500";
 const SK_COL_CRATE_IN   = "#FFAA44";
 const SK_COL_PLACED_OUT = "#007733";
 const SK_COL_PLACED_IN  = "#55FF88";
-const SK_COL_PLAYER     = "#FFD24A";   // body fill
+const SK_COL_PLAYER     = "#FFD24A";  // body fill
 const SK_COL_PLAYER_SH  = "#c89010";  // shadow / dark accent on body
 
 // ── sidebar action buttons ────────────────────────────────────────────────────
@@ -48,8 +48,8 @@ const SK_COL_PLAYER_SH  = "#c89010";  // shadow / dark accent on body
 const SK_DB_GAP  = 4;
 const SK_ACT_W   = Math.floor((SHELL_SBW - SK_DB_GAP * 3) / 2);   // 74 px
 const SK_ACT_H   = 26;
-const SK_ROW1_Y  = SHELL_SBY + 110;                                 // 126 — PREV / NEXT
-const SK_ROW2_Y  = SK_ROW1_Y + SK_ACT_H + 6;                       // 158 — UNDO / RETRY
+const SK_ROW1_Y  = SHELL_SBY + 110;                               // 126 — PREV / NEXT
+const SK_ROW2_Y  = SK_ROW1_Y + SK_ACT_H + 6;                      // 158 — UNDO / RETRY
 
 const SK_DBTN_PREV  = { x: SHELL_SBX + SK_DB_GAP,               y: SK_ROW1_Y, w: SK_ACT_W, h: SK_ACT_H };
 const SK_DBTN_NEXT  = { x: SHELL_SBX + SK_ACT_W + SK_DB_GAP*2,  y: SK_ROW1_Y, w: SK_ACT_W, h: SK_ACT_H };

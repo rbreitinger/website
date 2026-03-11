@@ -77,7 +77,6 @@
     }
     .card:hover{ transform:translateY(-2px); border-color: var(--accent); }
 
-    /* thumb: real screenshot OR styled placeholder glyph */
     .thumb{
       aspect-ratio:16/9; background:var(--thumb-bg);
       border-bottom:1px solid var(--border-soft);
@@ -128,7 +127,74 @@
     }
     .btn.primary:hover{ background: rgba(var(--accent-rgb),.22); }
 
-    /* ── shell iframe (no extra wrapper frame) ─────────── */
+    /* ── preview / lobby screen ────────────────────────── */
+    .preview{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:20px;
+      margin-top:14px;
+      align-items:start;
+    }
+    @media(max-width:580px){ .preview{ grid-template-columns:1fr; } }
+
+    .prev-thumb{
+      border-radius:10px;
+      overflow:hidden;
+      border:1px solid var(--border-soft);
+      background:var(--thumb-bg);
+      aspect-ratio:16/9;
+    }
+    .prev-thumb img{
+      width:100%; height:100%;
+      object-fit:cover;
+      object-position:center 15%;
+      display:block;
+    }
+    .prev-thumb-ph{
+      width:100%; height:100%;
+      display:flex; align-items:center; justify-content:center;
+      font-family:Consolas,"Courier New",monospace;
+      font-size:56px; color:rgba(var(--accent-rgb),.3);
+      background:linear-gradient(135deg,#cce4f5,#d8ecf8);
+    }
+
+    .prev-right{ display:grid; gap:12px; align-content:start; }
+    .prev-title{ margin:0; font-size:22px; font-weight:800; }
+    .prev-desc { margin:0; color:var(--muted); font-size:14px; line-height:1.55; }
+
+    .prev-how{
+      background:rgba(var(--accent-rgb),.04);
+      border:1px solid var(--border-soft);
+      border-radius:10px;
+      padding:10px 14px;
+    }
+    .prev-how-label{
+      margin:0 0 5px;
+      font-size:11px; font-weight:700;
+      color:var(--muted);
+      text-transform:uppercase; letter-spacing:.6px;
+      font-family:Consolas,"Courier New",monospace;
+    }
+    .prev-how-text{ margin:0; font-size:13px; color:var(--text); line-height:1.55; }
+
+    .btn-start{
+      display:block;
+      padding:13px;
+      text-align:center;
+      background:rgba(var(--accent-rgb),.10);
+      border:1px solid rgba(var(--accent-rgb),.5);
+      border-radius:10px;
+      font-weight:800; font-size:16px;
+      color:var(--text);
+      transition: background .12s, transform .08s;
+      cursor:pointer;
+    }
+    .btn-start:hover{
+      background:rgba(var(--accent-rgb),.20);
+      transform:translateY(-1px);
+    }
+
+    /* ── shell iframe (legacy — kept for backward compat) ─ */
     .game-shell-wrap{
       display:flex; flex-direction:column; align-items:center;
       padding:2px 0 6px;
@@ -208,7 +274,7 @@
 
     <footer class="frame">
       <div class="footerRow">
-        <div>© <span id="y"></span> Yorokobi Games</div>
+        <div>&#169; <span id="y"></span> Yorokobi Games</div>
         <div class="footerLinks" aria-label="Footer links">
           <button type="button" data-panel="contact">Contact</button>
           <button type="button" data-panel="legal">Legal</button>
@@ -225,13 +291,7 @@
     const footerPanelEl = document.getElementById("footerPanel");
 
     // ── game catalogue ────────────────────────────────────────────────────
-    // id       → hash route + maps to ./webgames/{id}/{id}.js
-    // type     → "web"   : loads the shell iframe
-    //            "win32" : shows screenshot + description + download links
-    // thumb    → path to screenshot image (optional, falls back to icon glyph)
-    // icon     → glyph shown in placeholder tile (monospace)
-    // chips    → "Desktop Browser" | "Touch Device" | "Win32"
-    // download → (win32 only) { label, url }[]  list of download buttons
+    // how  → one-line control/rule summary shown in the preview screen
     // ─────────────────────────────────────────────────────────────────────
     const games = [
       {
@@ -239,8 +299,9 @@
         type:  "web",
         name:  "Dungeon Crawler",
         desc:  "ASCII roguelike. Collect all diamonds, survive four enemy types, use items to escape.",
+        how:   "Arrow keys to move. Collect all diamonds and reach the exit alive. Watch out for four different enemy types.",
         chips: ["Desktop Browser"],
-        icon:  "☻",
+        icon:  "&#9787;",
         thumb: "./assets/img/thumbs/dungeon-crawler.png"
       },
       {
@@ -248,8 +309,9 @@
         type:  "web",
         name:  "Snake",
         desc:  "Classic snake. Eat food to grow, don't hit yourself or the walls.",
+        how:   "Arrow keys or swipe to steer. Eat food to grow longer. Avoid hitting the walls or your own tail.",
         chips: ["Desktop Browser", "Touch Device"],
-        icon:  "▓",
+        icon:  "&#9619;",
         thumb: "./assets/img/thumbs/snake.png"
       },
       {
@@ -257,8 +319,9 @@
         type:  "web",
         name:  "Pong",
         desc:  "Grid-based paddle game. Keep the ball alive — don't let it escape over the top.",
+        how:   "Left and right arrow keys to move the paddle. Keep the ball bouncing — don't let it escape over the top.",
         chips: ["Desktop Browser"],
-        icon:  "●",
+        icon:  "&#9679;",
         thumb: "./assets/img/thumbs/pong.png"
       },
       {
@@ -266,6 +329,7 @@
         type:  "web",
         name:  "Breakout",
         desc:  "Clear all blocks with a bouncing ball. Build combos, earn bonus balls, survive 32 levels — don't let it drop.",
+        how:   "Hold left mouse button and drag to move the paddle, or use left/right arrow keys. Destroy all blocks. Build combos to earn extra balls.",
         chips: ["Desktop Browser", "Touch Device"],
         icon:  "*",
         thumb: "./assets/img/thumbs/breakout.png"
@@ -275,33 +339,37 @@
         type:  "web",
         name:  "Flappy",
         desc:  "Thread Flappy through pipe gaps without touching. Background art by Paulina Riva (opengameart.org).",
+        how:   "Any key or tap to flap. Thread through the pipe gaps without touching pipes or the ground.",
         chips: ["Desktop Browser", "Touch Device"],
-        icon:  "◌",
+        icon:  "&#9676;",
         thumb: "./assets/img/thumbs/flappy.png"
       },
       {
         id:    "shapes",
         type:  "web",
         name:  "Shapes",
-        desc:  "Drag tetrominoes onto an 8×8 board. Fill whole rows or columns to clear them and score.",
+        desc:  "Drag tetrominoes onto an 8\u00d78 board. Fill whole rows or columns to clear them and score.",
+        how:   "Drag piece shapes from the tray onto the 8\u00d78 board. Fill a complete row or column to clear it and score points.",
         chips: ["Desktop Browser", "Touch Device"],
-        icon:  "□",
+        icon:  "&#9633;",
         thumb: "./assets/img/thumbs/shapes.png"
       },
       {
         id:    "15puzzle",
         type:  "web",
         name:  "15 Puzzle",
-        desc:  "Slide 15 tiles back into order on a 4×4 grid.",
+        desc:  "Slide 15 tiles back into order on a 4\u00d74 grid.",
+        how:   "Click a tile that is directly adjacent to the empty space to slide it. Arrange all 15 tiles in order from 1 to 15.",
         chips: ["Desktop Browser", "Touch Device"],
-        icon:  "◫",
+        icon:  "&#9647;",
         thumb: "./assets/img/thumbs/15puzzle.png"
       },
       {
         id:    "eliminate",
         type:  "web",
         name:  "Eliminate",
-        desc:  "Click connected color groups to remove them. Board collapses inward. Score = removed².",
+        desc:  "Click connected color groups to remove them. Board collapses inward. Bigger groups score more.",
+        how:   "Click any group of 2 or more connected tiles of the same color to remove them. Larger groups score exponentially more.",
         chips: ["Desktop Browser", "Touch Device"],
         icon:  "x",
         thumb: "./assets/img/thumbs/eliminate.png"
@@ -311,19 +379,21 @@
         type:  "web",
         name:  "Sokoban",
         desc:  "Push crates onto goal squares. Can you solve all 58 levels by 'Laura Wheeler'?",
+        how:   "Arrow keys or swipe to walk. Push crates onto the blue goal fields. Press R or tap Reset to restart the current level.",
         chips: ["Desktop Browser", "Touch Device"],
         icon:  "+",
         thumb: "./assets/img/thumbs/sokoban.png"
       }
 
-      // ── example win32 entry (uncomment + fill in when you have a desktop game) ──
+      // ── example win32 entry ──────────────────────────────────────────────
       // {
       //   id:       "my-desktop-game",
       //   type:     "win32",
       //   name:     "My Desktop Game",
       //   desc:     "A polished desktop release for Windows.",
+      //   how:      "",
       //   chips:    ["Win32"],
-      //   icon:     "▪",
+      //   icon:     "&#9642;",
       //   thumb:    "./assets/img/thumbs/my-desktop-game.png",
       //   download: [
       //     { label: "Download v1.0 (Windows)", url: "./releases/my-desktop-game-1.0.zip" }
@@ -351,7 +421,7 @@
     function thumbHtml(g){
       if(g.thumb)
         return `<span class="thumb"><img src="${escHtml(g.thumb)}" alt="${escHtml(g.name)} screenshot"></span>`;
-      return `<span class="thumb"><span class="thumb-ph">${escHtml(g.icon||"▓")}</span></span>`;
+      return `<span class="thumb"><span class="thumb-ph">${g.icon||"&#9619;"}</span></span>`;
     }
 
     // ── views ─────────────────────────────────────────────────────────────
@@ -367,8 +437,9 @@
     }
 
     function renderGames(){
+      // Cards now link to #game/:id — the preview/lobby screen
       const cards = games.map(g => `
-        <a class="card" href="#play/${escHtml(g.id)}" aria-label="Play ${escHtml(g.name)}">
+        <a class="card" href="#game/${escHtml(g.id)}" aria-label="${escHtml(g.name)}">
           ${thumbHtml(g)}
           <span class="body">
             <p class="name">${escHtml(g.name)}</p>
@@ -381,43 +452,87 @@
       contentEl.innerHTML = `<h2>Games</h2><div class="grid">${cards}</div>`;
     }
 
+    // ── preview / lobby screen ────────────────────────────────────────────
+    function renderPreview(gameId){
+      const g = games.find(x => x.id === gameId);
+      if(!g){
+        contentEl.innerHTML = `<p class="crumbs"><a href="#games">&#8592; Games</a></p><p>Game not found.</p>`;
+        return;
+      }
+
+      // win32 games get the download view instead of a play button
+      if(g.type === "win32"){
+        renderDownload(g);
+        return;
+      }
+
+      const thumbBlock = g.thumb
+        ? `<div class="prev-thumb"><img src="${escHtml(g.thumb)}" alt="${escHtml(g.name)} screenshot"></div>`
+        : `<div class="prev-thumb prev-thumb-ph">${g.icon||"&#9619;"}</div>`;
+
+      const howBlock = g.how
+        ? `<div class="prev-how">
+             <p class="prev-how-label">How to Play</p>
+             <p class="prev-how-text">${escHtml(g.how)}</p>
+           </div>`
+        : "";
+
+      const startUrl = `game.html?id=${encodeURIComponent(g.id)}`;
+
+      contentEl.innerHTML = `
+        <p class="crumbs"><a href="#games">&#8592; All games</a></p>
+        <div class="preview">
+          <div class="prev-left">
+            ${thumbBlock}
+          </div>
+          <div class="prev-right">
+            <h2 class="prev-title">${escHtml(g.name)}</h2>
+            <div class="chips">${chipHtml(g.chips)}</div>
+            <p class="prev-desc">${escHtml(g.desc)}</p>
+            ${howBlock}
+            <a class="btn-start" href="${escHtml(startUrl)}">&#9654; Start Game</a>
+          </div>
+        </div>
+      `;
+    }
+
+    // ── win32 / download view ─────────────────────────────────────────────
+    function renderDownload(g){
+      const heroHtml = g.thumb
+        ? `<div class="dl-hero"><img src="${escHtml(g.thumb)}" alt="${escHtml(g.name)} screenshot"></div>`
+        : `<div class="dl-hero"><div class="dl-hero-ph">${g.icon||"&#9642;"}</div></div>`;
+
+      const dlBtns = (g.download||[]).map(d =>
+        `<a class="btn primary" href="${escHtml(d.url)}" download>${escHtml(d.label)}</a>`
+      ).join("");
+
+      contentEl.innerHTML = `
+        <p class="crumbs"><a href="#games">&#8592; All games</a></p>
+        <div class="dl-view">
+          ${heroHtml}
+          <div class="dl-body">
+            <h2 class="dl-title">${escHtml(g.name)}</h2>
+            <p class="dl-desc">${escHtml(g.desc)}</p>
+            <div class="dl-actions">
+              ${dlBtns || `<span style="color:var(--muted);font-size:13px;">No downloads available yet.</span>`}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // ── legacy iframe view (kept for backward compat with #play/:id) ──────
     function renderPlay(gameId){
       const g = games.find(x => x.id === gameId);
       if(!g){
-        contentEl.innerHTML = `<p class="crumbs"><a href="#games">← Games</a></p><p>Game not found.</p>`;
+        contentEl.innerHTML = `<p class="crumbs"><a href="#games">&#8592; Games</a></p><p>Game not found.</p>`;
         return;
       }
+      if(g.type === "win32"){ renderDownload(g); return; }
 
-      // win32 / download view
-      if(g.type === "win32"){
-        const heroHtml = g.thumb
-          ? `<div class="dl-hero"><img src="${escHtml(g.thumb)}" alt="${escHtml(g.name)} screenshot"></div>`
-          : `<div class="dl-hero"><div class="dl-hero-ph">${escHtml(g.icon||"▪")}</div></div>`;
-
-        const dlBtns = (g.download||[]).map(d =>
-          `<a class="btn primary" href="${escHtml(d.url)}" download>${escHtml(d.label)}</a>`
-        ).join("");
-
-        contentEl.innerHTML = `
-          <p class="crumbs"><a href="#games">← All games</a></p>
-          <div class="dl-view">
-            ${heroHtml}
-            <div class="dl-body">
-              <h2 class="dl-title">${escHtml(g.name)}</h2>
-              <p class="dl-desc">${escHtml(g.desc)}</p>
-              <div class="dl-actions">
-                ${dlBtns || `<span style="color:var(--muted);font-size:13px;">No downloads available yet.</span>`}
-              </div>
-            </div>
-          </div>
-        `;
-        return;
-      }
-
-      // web / shell view
       const src = `./webgames/shell.html?game=${encodeURIComponent(g.id)}`;
       contentEl.innerHTML = `
-        <p class="crumbs"><a href="#games">← All games</a></p>
+        <p class="crumbs"><a href="#games">&#8592; All games</a></p>
         <div class="game-shell-wrap">
           <iframe
             src="${escHtml(src)}"
@@ -436,19 +551,19 @@
                   <p class="panelText"><a href="mailto:contact@yorokobi-games.com"><span style="color:var(--text)">Email</span></a></p>
                   <p class="panelText"><a href="https://github.com/yorokobi-games"><span style="color:var(--text)">GitHub</span></a></p>`,
         legal:   `<p class="panelTitle">Legal / Impressum</p>
-                  <p class="panelText">Angaben gemäß § 5 TMG <br>
+                  <p class="panelText">Angaben gem&auml;&szlig; &sect; 5 TMG <br>
                                        Rene Breitinger <br>
                                        Lindenstr. 8 <br>
-                                       89180 Berghülen <br>
+                                       89180 Bergh&uuml;len <br>
                                        Deutschland <br>
-                                       Verantwortlich für den Inhalt nach § 55 Abs. 2 RStV: <br>
+                                       Verantwortlich f&uuml;r den Inhalt nach &sect; 55 Abs. 2 RStV: <br>
                                        Rene Breitinger, Anschrift wie oben.</p>`,
         privacy: `<p class="panelTitle">Privacy</p>
                   <p class="panelText">This site does not use cookies, does not track you, and does not transmit any data to a server. <br>
                                        Each game stores a single personal best value (score or time) directly in your browser using localStorage. <br>
                                        This data never leaves your device. You can remove it at any time by clearing your browser's site <br>
-                                       data for this page — though doing so will also erase your personal bests. <br>
-                                       No analytics, no advertising, no third-party scripts — just like the web should be.</p>`
+                                       data for this page &mdash; though doing so will also erase your personal bests. <br>
+                                       No analytics, no advertising, no third-party scripts &mdash; just like the web should be.</p>`
       };
       footerPanelEl.innerHTML = panels[kind] || "";
       footerPanelEl.classList.add("open");
@@ -467,6 +582,11 @@
       if(!hash || hash === "home"){ renderHome();  return; }
       if(hash === "games")        { renderGames(); return; }
 
+      // new preview route
+      const mGame = hash.match(/^game\/(.+)$/);
+      if(mGame){ renderPreview(mGame[1]); return; }
+
+      // legacy iframe route — kept so old bookmarks still work
       const mPlay = hash.match(/^play\/(.+)$/);
       if(mPlay){ renderPlay(mPlay[1]); return; }
 
