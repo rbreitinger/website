@@ -107,6 +107,7 @@
       padding:3px 8px; border-radius:999px; white-space:nowrap;
     }
     .chip.web{ border-color: rgba(var(--accent-rgb),.5); }
+    .chip.v2 { border-color: rgba(var(--accent-rgb),.5); }
     .chip.win{ border-color: rgba(255,140,0,.5); }
     .chip.mob{ border-color: rgba(80,180,80,.5); }
 
@@ -383,6 +384,16 @@
         chips: ["Desktop Browser", "Touch Device"],
         icon:  "+",
         thumb: "./assets/img/thumbs/sokoban.png"
+      },
+      {
+        id:    "devtest",
+        type:  "webv2",
+        name:  "Development Test",
+        desc:  "Not a game. A canvas sandbox for testing the game-v2 shell: scaling, title bar, input, audio gate and storage API.",
+        how:   "Click anywhere to spawn a bouncing ball. Each ball picks up your click position. Reset clears all balls. Music Loop by Jordan (Joth) from opengameart.org",
+        chips: ["Desktop Browser", "Tablet"],
+        icon:  "\u2699",
+        thumb: ""
       }
 
       // ── example win32 entry ──────────────────────────────────────────────
@@ -412,6 +423,7 @@
         let cls = "chip";
         const cl = c.toLowerCase();
         if(cl === "desktop browser") cls += " web";
+        if(cl === "tablet")          cls += " v2";
         if(cl === "win32")           cls += " win";
         if(cl === "touch device")    cls += " mob";
         return `<span class="${cls}">${escHtml(c)}</span>`;
@@ -477,7 +489,12 @@
            </div>`
         : "";
 
-      const startUrl = `game.html?id=${encodeURIComponent(g.id)}`;
+      let startUrl;
+      if(g.type === "webv2"){
+        startUrl = `game-v2.html?id=${encodeURIComponent(g.id)}`;
+      } else {
+        startUrl = `game.html?id=${encodeURIComponent(g.id)}`;
+      }
 
       contentEl.innerHTML = `
         <p class="crumbs"><a href="#games">&#8592; All games</a></p>

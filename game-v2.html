@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yorokobi Games</title>
+    <style>
+
+        /* ------------------------------------------------------------------ */
+        /*  RESET & BASE                                                        */
+        /* ------------------------------------------------------------------ */
+
+        *, *::before, *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            background: #ddeef8;
+            overflow: hidden;
+            position: relative;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        /* ------------------------------------------------------------------ */
+        /*  OUTER WRAPPER — scales as a unit (title bar + canvas together)     */
+        /*  position: absolute so CSS transform doesn't affect layout flow.    */
+        /*  applyScale() sets transform + top/left explicitly every time.      */
+        /* ------------------------------------------------------------------ */
+
+        #v2-wrapper {
+            position: absolute;
+            display: flex;
+            flex-direction: column;
+            width: 960px;
+            height: 684px;          /* 44 title bar + 640 canvas */
+            transform-origin: top left;
+            /* top / left / transform set by applyScale() at runtime */
+        }
+
+        /* ------------------------------------------------------------------ */
+        /*  TITLE BAR  (44 px, pure HTML — canvas knows nothing about it)      */
+        /* ------------------------------------------------------------------ */
+
+        #v2-titlebar {
+            width: 960px;
+            height: 44px;
+            background: #ffffff;
+            border-bottom: 1px solid #1c2333;
+            display: flex;
+            align-items: center;
+            flex-shrink: 0;
+            position: relative;
+            user-select: none;
+        }
+
+        /* left cluster: back button */
+        #v2-left {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding-left: 8px;
+            min-width: 180px;
+        }
+
+        /* center: game title */
+        #v2-title {
+            position: absolute;
+            left: 0;
+            right: 0;
+            text-align: center;
+            color: #1c2333;
+            font-size: 15px;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            pointer-events: none;   /* clicks fall through to bar beneath */
+        }
+
+        /* right cluster: sound + fullscreen */
+        #v2-right {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding-right: 8px;
+            margin-left: auto;
+        }
+
+        /* shared title bar button style */
+        .v2-tbtn {
+            width: 32px;
+            height: 32px;
+            border: none;
+            border-radius: 6px;
+            background: transparent;
+            color: #5a6a80;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.15s, color 0.15s;
+        }
+
+        .v2-tbtn:hover {
+            background: rgba(0,120,212,.08);
+            color: #1c2333;
+        }
+
+        .v2-tbtn:active {
+            background: rgba(0,120,212,.16);
+        }
+
+        .v2-tbtn svg {
+            width: 20px;
+            height: 20px;
+            display: block;
+        }
+
+        /* back button is slightly wider to fit text label */
+        #v2-btn-back {
+            width: auto;
+            padding: 0 10px;
+            gap: 6px;
+            font-size: 13px;
+            font-weight: 500;
+            letter-spacing: 0.02em;
+        }
+
+        /* reset button — shown/hidden by game */
+        #v2-btn-reset {
+            width: auto;
+            padding: 0 10px;
+            font-size: 13px;
+            font-weight: 500;
+            letter-spacing: 0.02em;
+        }
+
+        #v2-btn-reset.v2-hidden {
+            display: none;
+        }
+
+        /* muted state indicator */
+        #v2-btn-sound.v2-muted {
+            color: #c0392b;
+        }
+
+        /* ------------------------------------------------------------------ */
+        /*  CANVAS  (960 × 640 — logical game resolution, never changes)       */
+        /* ------------------------------------------------------------------ */
+
+        #v2-canvas {
+            display: block;
+            width: 960px;
+            height: 640px;
+            background: #000;
+            flex-shrink: 0;
+            image-rendering: pixelated;
+        }
+
+    </style>
+</head>
+<body>
+
+<!-- ========================================================================
+     SHELL LAYOUT
+     Title bar (44 px) + Canvas (960×640) = 684 px total height.
+     The game never draws outside (0,0)–(960,640) and has no knowledge
+     of the title bar above it.
+     ======================================================================== -->
+
+<div id="v2-wrapper">
+
+    <!-- TITLE BAR -->
+    <div id="v2-titlebar">
+
+        <div id="v2-left">
+
+            <!-- Back to games list -->
+            <button id="v2-btn-back" class="v2-tbtn" title="Back to games">
+                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 4 L6 10 L12 16"/>
+                </svg>
+                Games
+            </button>
+
+            <!-- Reset — hidden until a game is loaded and opts in -->
+            <button id="v2-btn-reset" class="v2-tbtn v2-hidden" title="Reset">
+                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 10 a6 6 0 1 1 2 4.2"/>
+                    <path d="M4 14 L4 10 L8 10"/>
+                </svg>
+                Reset
+            </button>
+
+        </div>
+
+        <!-- Centred game title -->
+        <div id="v2-title">Yorokobi Games</div>
+
+        <div id="v2-right">
+
+            <!-- Toggle sound -->
+            <button id="v2-btn-sound" class="v2-tbtn" title="Toggle sound">
+                <svg id="v2-icon-sound-on" viewBox="0 0 20 20" fill="none"
+                     stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 7 L7 7 L11 3 L11 17 L7 13 L3 13 Z"/>
+                    <path d="M14 6.5 a4.5 4.5 0 0 1 0 7"/>
+                    <path d="M16.5 4 a8 8 0 0 1 0 12"/>
+                </svg>
+                <svg id="v2-icon-sound-off" viewBox="0 0 20 20" fill="none"
+                     stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round"
+                     style="display:none">
+                    <path d="M3 7 L7 7 L11 3 L11 17 L7 13 L3 13 Z"/>
+                    <line x1="14" y1="8" x2="19" y2="13"/>
+                    <line x1="19" y1="8" x2="14" y2="13"/>
+                </svg>
+            </button>
+
+            <!-- Toggle fullscreen -->
+            <button id="v2-btn-fs" class="v2-tbtn" title="Fullscreen">
+                <svg id="v2-icon-fs-enter" viewBox="0 0 20 20" fill="none"
+                     stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 8 L3 3 L8 3"/>
+                    <path d="M17 8 L17 3 L12 3"/>
+                    <path d="M3 12 L3 17 L8 17"/>
+                    <path d="M17 12 L17 17 L12 17"/>
+                </svg>
+                <svg id="v2-icon-fs-exit" viewBox="0 0 20 20" fill="none"
+                     stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round"
+                     style="display:none">
+                    <path d="M8 3 L8 8 L3 8"/>
+                    <path d="M12 3 L12 8 L17 8"/>
+                    <path d="M8 17 L8 12 L3 12"/>
+                    <path d="M12 17 L12 12 L17 12"/>
+                </svg>
+            </button>
+
+        </div>
+
+    </div>
+    <!-- /TITLE BAR -->
+
+    <!-- GAME CANVAS — logical size 960×640, never changes -->
+    <canvas id="v2-canvas" width="960" height="640"></canvas>
+
+</div>
+<!-- /v2-wrapper -->
+
+
+<script>
+/* ============================================================================
+   GAME-V2 SHELL  —  Yorokobi Games
+   Desktop / tablet landscape shell.
+   Canvas: 960 × 640 (logical, never changes).
+   Title bar: 44 px (HTML, outside canvas — game draws from 0,0 freely).
+   Total page area: 960 × 684.
+   ============================================================================ */
+
+"use strict";
+
+/* --------------------------------------------------------------------------
+   SHELL CONSTANTS
+   Games may read these freely.
+   -------------------------------------------------------------------------- */
+
+var V2_CW       = 960;      /* canvas logical width                          */
+var V2_CH       = 640;      /* canvas logical height                         */
+var V2_TBHEIGHT = 44;       /* title bar height in px                        */
+
+/* --------------------------------------------------------------------------
+   DOM REFERENCES
+   -------------------------------------------------------------------------- */
+
+var v2Wrapper   = document.getElementById("v2-wrapper");
+var v2Canvas    = document.getElementById("v2-canvas");
+var v2TitleEl   = document.getElementById("v2-title");
+var v2BtnBack   = document.getElementById("v2-btn-back");
+var v2BtnReset  = document.getElementById("v2-btn-reset");
+var v2BtnSound  = document.getElementById("v2-btn-sound");
+var v2BtnFs     = document.getElementById("v2-btn-fs");
+
+var v2IconSoundOn   = document.getElementById("v2-icon-sound-on");
+var v2IconSoundOff  = document.getElementById("v2-icon-sound-off");
+var v2IconFsEnter   = document.getElementById("v2-icon-fs-enter");
+var v2IconFsExit    = document.getElementById("v2-icon-fs-exit");
+
+var v2Ctx = v2Canvas.getContext("2d");
+
+/* --------------------------------------------------------------------------
+   STATE
+   -------------------------------------------------------------------------- */
+
+var v2Muted         = false;
+var v2GameRunning   = false;
+var v2LastTime      = 0;
+var v2Accumulator   = 0;
+var v2FixedStep     = 10;           /* ms — fixed update step, same as legacy */
+var v2GameLoaded    = false;
+var v2GameId        = "";
+var v2BackUrl       = "index.html#games";   /* set to absolute URL in loadGame, before base tag */
+
+/* --------------------------------------------------------------------------
+   PUBLIC API — available to game scripts
+   -------------------------------------------------------------------------- */
+
+/* Returns true when the player has muted sound. */
+function SHELL_isMuted() {
+    return v2Muted;
+}
+
+/* Personal best storage — same API as legacy shell. */
+function SHELL_getPB(pbKey) {
+    try {
+        var raw = localStorage.getItem("yk_pb_" + pbKey);
+        return raw !== null ? JSON.parse(raw) : null;
+    } catch (e) {
+        return null;
+    }
+}
+
+function SHELL_setPB(pbKey, pbVal) {
+    try {
+        localStorage.setItem("yk_pb_" + pbKey, JSON.stringify(pbVal));
+    } catch (e) { /* quota or private mode — silently ignore */ }
+}
+
+/* Show / hide the Reset button in the title bar.
+   Games call this if they want a reset control. */
+function SHELL_showReset(visible) {
+    if (visible) {
+        v2BtnReset.classList.remove("v2-hidden");
+    } else {
+        v2BtnReset.classList.add("v2-hidden");
+    }
+}
+
+/* Override the title bar text (called by loadGame after GAME.title is known). */
+function SHELL_setTitle(titleText) {
+    v2TitleEl.textContent = titleText;
+}
+
+/* --------------------------------------------------------------------------
+   SCALE — fits wrapper (960 × 684) into the viewport, integer or fractional.
+   Called on load and on every resize / orientation change.
+   -------------------------------------------------------------------------- */
+
+var v2ScaleTimer = 0;
+
+function v2ApplyScale() {
+    var availW  = window.innerWidth;
+    var availH  = window.innerHeight;
+    var totalH  = V2_CH + V2_TBHEIGHT;     /* 684 */
+    var scaleW  = availW / V2_CW;
+    var scaleH  = availH / totalH;
+    var scale   = Math.min(scaleW, scaleH);
+
+    /* Scaled visual dimensions */
+    var scaledW = V2_CW   * scale;
+    var scaledH = totalH  * scale;
+
+    /* Centre in viewport — position: absolute, transform-origin: top left.
+       This means the transform never fights layout flow and nothing gets
+       clipped by the body regardless of scale direction. */
+    var leftPx = Math.round((availW - scaledW) / 2);
+    var topPx  = Math.round((availH - scaledH) / 2);
+
+    v2Wrapper.style.left      = leftPx + "px";
+    v2Wrapper.style.top       = topPx  + "px";
+    v2Wrapper.style.transform = "scale(" + scale + ")";
+}
+
+window.addEventListener("resize", function () {
+    clearTimeout(v2ScaleTimer);
+    v2ScaleTimer = setTimeout(v2ApplyScale, 80);   /* 80 ms debounce */
+});
+
+if (window.screen && window.screen.orientation) {
+    window.screen.orientation.addEventListener("change", function () {
+        clearTimeout(v2ScaleTimer);
+        v2ScaleTimer = setTimeout(v2ApplyScale, 80);
+    });
+}
+
+window.addEventListener("orientationchange", function () {
+    clearTimeout(v2ScaleTimer);
+    v2ScaleTimer = setTimeout(v2ApplyScale, 80);
+});
+
+/* --------------------------------------------------------------------------
+   FULLSCREEN
+   -------------------------------------------------------------------------- */
+
+function v2ToggleFullscreen() {
+    if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(function () {});
+    } else {
+        document.exitFullscreen().catch(function () {});
+    }
+}
+
+function v2OnFullscreenChange() {
+    var inFs = !!document.fullscreenElement;
+    v2IconFsEnter.style.display = inFs ? "none" : "";
+    v2IconFsExit.style.display  = inFs ? ""     : "none";
+    v2ApplyScale();
+}
+
+document.addEventListener("fullscreenchange",       v2OnFullscreenChange);
+document.addEventListener("webkitfullscreenchange", v2OnFullscreenChange);
+
+v2BtnFs.addEventListener("click", v2ToggleFullscreen);
+
+/* --------------------------------------------------------------------------
+   SOUND TOGGLE
+   -------------------------------------------------------------------------- */
+
+function v2ToggleSound() {
+    v2Muted = !v2Muted;
+    v2IconSoundOn.style.display  = v2Muted ? "none" : "";
+    v2IconSoundOff.style.display = v2Muted ? ""     : "none";
+    v2BtnSound.classList.toggle("v2-muted", v2Muted);
+}
+
+v2BtnSound.addEventListener("click", v2ToggleSound);
+
+/* --------------------------------------------------------------------------
+   BACK BUTTON
+   Navigates to the preview screen for the current game in index.html.
+   -------------------------------------------------------------------------- */
+
+v2BtnBack.addEventListener("click", function () {
+    window.location.href = v2BackUrl;
+});
+
+/* --------------------------------------------------------------------------
+   RESET BUTTON
+   Delegates to GAME.reset() when visible.
+   -------------------------------------------------------------------------- */
+
+v2BtnReset.addEventListener("click", function () {
+    if (v2GameLoaded && typeof GAME !== "undefined" && typeof GAME.reset === "function") {
+        GAME.reset();
+    }
+});
+
+/* --------------------------------------------------------------------------
+   RAF LOOP
+   Fixed-step updates at v2FixedStep ms, uncapped draw.
+   Same model as legacy shell.js so game logic is identical.
+   -------------------------------------------------------------------------- */
+
+function v2Loop(timestamp) {
+    requestAnimationFrame(v2Loop);
+
+    if (!v2GameRunning) return;
+
+    var dt = timestamp - v2LastTime;
+    v2LastTime = timestamp;
+
+    /* Clamp to avoid spiral-of-death on tab restore */
+    if (dt > 200) dt = 200;
+
+    v2Accumulator += dt;
+    while (v2Accumulator >= v2FixedStep) {
+        GAME.update(v2FixedStep);
+        v2Accumulator -= v2FixedStep;
+    }
+
+    GAME.draw();
+}
+
+/* --------------------------------------------------------------------------
+   INPUT
+   All coords are de-scaled to logical canvas space (960×640).
+   -------------------------------------------------------------------------- */
+
+var v2DragActive    = false;
+var v2TouchStartX   = 0;
+var v2TouchStartY   = 0;
+var v2SwipeThresh   = 20;       /* px in logical space */
+
+function v2CanvasCoords(clientX, clientY) {
+    var rc    = v2Canvas.getBoundingClientRect();
+    var mx    = (clientX - rc.left)  * (V2_CW / rc.width);
+    var my    = (clientY - rc.top)   * (V2_CH / rc.height);
+    return { x: mx, y: my };
+}
+
+/* --- Mouse --- */
+
+v2Canvas.addEventListener("mousedown", function (e) {
+    if (!v2GameRunning) return;
+    v2DragActive = true;
+    var pt = v2CanvasCoords(e.clientX, e.clientY);
+    if (typeof GAME.onClick === "function") GAME.onClick(pt.x, pt.y);
+});
+
+v2Canvas.addEventListener("mousemove", function (e) {
+    if (!v2GameRunning || !v2DragActive) return;
+    var pt = v2CanvasCoords(e.clientX, e.clientY);
+    if (typeof GAME.onDrag === "function") GAME.onDrag(pt.x, pt.y);
+});
+
+window.addEventListener("mouseup", function () {
+    v2DragActive = false;
+});
+
+/* --- Touch --- */
+
+v2Canvas.addEventListener("touchstart", function (e) {
+    if (!v2GameRunning) return;
+    e.preventDefault();
+    var t  = e.changedTouches[0];
+    var pt = v2CanvasCoords(t.clientX, t.clientY);
+    v2TouchStartX = pt.x;
+    v2TouchStartY = pt.y;
+    v2DragActive  = true;
+}, { passive: false });
+
+v2Canvas.addEventListener("touchmove", function (e) {
+    if (!v2GameRunning || !v2DragActive) return;
+    e.preventDefault();
+    var t  = e.changedTouches[0];
+    var pt = v2CanvasCoords(t.clientX, t.clientY);
+    if (typeof GAME.onDrag === "function") GAME.onDrag(pt.x, pt.y);
+}, { passive: false });
+
+v2Canvas.addEventListener("touchend", function (e) {
+    if (!v2GameRunning) return;
+    e.preventDefault();
+    v2DragActive = false;
+    var t   = e.changedTouches[0];
+    var pt  = v2CanvasCoords(t.clientX, t.clientY);
+    var dx  = pt.x - v2TouchStartX;
+    var dy  = pt.y - v2TouchStartY;
+    var dist = Math.sqrt(dx * dx + dy * dy);
+
+    if (dist >= v2SwipeThresh) {
+        if (typeof GAME.onSwipe === "function") {
+            var dir;
+            if (Math.abs(dx) >= Math.abs(dy)) {
+                dir = dx > 0 ? "right" : "left";
+            } else {
+                dir = dy > 0 ? "down" : "up";
+            }
+            GAME.onSwipe(dir);
+        }
+    } else {
+        if (typeof GAME.onClick === "function") GAME.onClick(pt.x, pt.y);
+    }
+}, { passive: false });
+
+/* --------------------------------------------------------------------------
+   GAME LOADING
+   URL param: game-v2.html?id=mygame
+   Expects:   webgames/mygame/mygame.js
+   Game starts automatically after script loads (no START button needed).
+   -------------------------------------------------------------------------- */
+
+function v2LoadGame(gameId) {
+    v2GameId = gameId;
+
+    /* Compute the absolute back URL NOW — before the base tag is injected.
+       After injection, relative hrefs resolve against ./webgames/ and
+       "index.html" would wrongly become "webgames/index.html". */
+    v2BackUrl = new URL("index.html#game/" + gameId, location.href).href;
+
+    /* Inject a <base> tag so all game-relative asset paths resolve correctly
+       from ./webgames/ — same technique as game.html. */
+    var baseTag = document.createElement("base");
+    baseTag.href = new URL("./webgames/", location.href).href;
+    document.head.appendChild(baseTag);
+
+    var script  = document.createElement("script");
+    script.src  = new URL("webgames/" + gameId + "/" + gameId + ".js", location.href).href;
+
+    script.onload = function () {
+        if (typeof GAME === "undefined") {
+            v2ShowError("Game script loaded but GAME object not found.");
+            return;
+        }
+
+        /* Update title bar */
+        SHELL_setTitle(typeof GAME.title === "string" ? GAME.title : gameId);
+
+        /* Show reset button if game declares a label for it */
+        if (typeof GAME.resetLabel === "string" || typeof GAME.reset === "function") {
+            if (typeof GAME.resetLabel === "string") {
+                v2BtnReset.childNodes[1] && (v2BtnReset.lastChild.textContent = " " + GAME.resetLabel);
+            }
+            SHELL_showReset(true);
+        }
+
+        /* Init, then start immediately — no START button in this shell */
+        if (typeof GAME.init === "function") GAME.init(v2Canvas);
+
+        v2GameLoaded  = true;
+        v2GameRunning = true;
+        v2LastTime    = performance.now();
+        v2Accumulator = 0;
+
+        if (typeof GAME.start === "function") GAME.start();
+
+        requestAnimationFrame(v2Loop);
+    };
+
+    script.onerror = function () {
+        v2ShowError("Could not load game: " + gameId);
+    };
+
+    document.body.appendChild(script);
+}
+
+/* --------------------------------------------------------------------------
+   DEV / TEST DRAW — shown when no game id is provided or on error.
+   -------------------------------------------------------------------------- */
+
+function v2DrawIdleScreen() {
+    var ctx = v2Ctx;
+    ctx.fillStyle = "#c8dff0";
+    ctx.fillRect(0, 0, V2_CW, V2_CH);
+
+    ctx.fillStyle = "#b0c4d8";
+    ctx.fillRect(0, 0, V2_CW, 1);              /* top edge hint */
+
+    ctx.fillStyle = "#0078d4";
+    ctx.font = "bold 28px 'Segoe UI', sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("game-v2 shell", V2_CW / 2, V2_CH / 2 - 20);
+
+    ctx.fillStyle = "#5a6a80";
+    ctx.font = "16px 'Segoe UI', sans-serif";
+    ctx.fillText("Canvas: " + V2_CW + " \xd7 " + V2_CH + "  \u2014  add ?id=gameid to load a game", V2_CW / 2, V2_CH / 2 + 16);
+
+    ctx.fillStyle = "#1c2333";
+    ctx.font = "13px 'Segoe UI', sans-serif";
+    ctx.fillText("(0,0) is the true top-left of this canvas. The title bar lives outside it.", V2_CW / 2, V2_CH / 2 + 48);
+}
+
+function v2ShowError(msg) {
+    var ctx = v2Ctx;
+    ctx.fillStyle = "#1a0000";
+    ctx.fillRect(0, 0, V2_CW, V2_CH);
+    ctx.fillStyle = "#ff4444";
+    ctx.font = "bold 20px 'Segoe UI', sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(msg, V2_CW / 2, V2_CH / 2);
+}
+
+/* --------------------------------------------------------------------------
+   BOOT
+   -------------------------------------------------------------------------- */
+
+v2ApplyScale();
+
+var v2Params = new URLSearchParams(location.search);
+var v2IdParam = v2Params.get("id");
+
+if (v2IdParam) {
+    v2LoadGame(v2IdParam);
+} else {
+    /* No game — show dev idle screen */
+    v2DrawIdleScreen();
+}
+
+</script>
+</body>
+</html>
