@@ -218,6 +218,41 @@ let brkParts      = [];
 
 // canvas / context set in init()
 let _brkCtx       = null;
+let _brkCanvas    = null;
+
+// pointer lock state
+let _brkLocked    = false;
+
+// =============================================================================
+// POINTER LOCK — free mouse tracking
+// =============================================================================
+
+// Called by the browser whenever pointer lock status changes.
+function brkOnLockChange() {
+    _brkLocked = (document.pointerLockElement === _brkCanvas);
+}
+
+// Receives every raw mousemove event.
+// When locked, uses movementX (relative delta, CSS pixels) to drive the paddle.
+// Scale factor converts from CSS-pixel movement into logical canvas units.
+function brkOnFreeMouse(e) {
+    if (!_brkLocked) return;
+    if (brkState !== BRK_S_READY && brkState !== BRK_S_PLAYING) return;
+    const rc    = _brkCanvas.getBoundingClientRect();
+    const scale = SHELL_CW / rc.width;
+    brkPadX += e.movementX * scale;
+    brkClampPad();
+}
+
+// Request pointer lock — must be called from inside a user-gesture handler.
+function brkLockMouse() {
+    if (_brkCanvas && !_brkLocked) _brkCanvas.requestPointerLock();
+}
+
+// Release pointer lock.
+function brkUnlockMouse() {
+    if (_brkLocked) document.exitPointerLock();
+}
 
 // =============================================================================
 // HELPERS
@@ -271,10 +306,12 @@ function brkEnter(s) {
     if (s === BRK_S_GAMEOVER) {
         brkSnd(BRK_SND_GAMEOVER);
         brkCheckBest();
+        brkUnlockMouse();   // release pointer lock — game is over
     }
 
     if (s === BRK_S_COMPLETE) {
         brkCheckBest();
+        brkUnlockMouse();   // release pointer lock — game is over
     }
 }
 
@@ -575,11 +612,6 @@ function brkDrawSidebar() {
         cx.stroke();
     }
     cx.fillStyle = BRK_C_SB_TXT;
-    // combo display (only while ball is live and combo > 1)
-    if (brkCombo > 1 && brkState === BRK_S_PLAYING) {
-        cx.fillStyle = BRK_C_COMBO_TXT;
-        cx.fillText("COMBO x" + brkCombo, SHELL_BTN_X, BRK_SB_COMBO_Y);
-    }
 }
 
 // Semi-transparent overlay with up to two text lines
@@ -654,6 +686,21 @@ function brkDraw() {
             brkDrawParts();
             brkDrawPaddle();
             brkDrawBall();
+            if (brkCombo > 1) {
+                const cTxt = "COMBO x" + brkCombo;
+                const cX   = SHELL_PFX + SHELL_PFW / 2;
+                const cY   = SHELL_PFY + SHELL_PFH / 2;
+                cx.font         = brkFnt(22);
+                cx.textAlign    = "center";
+                cx.textBaseline = "middle";
+                // drop shadow for legibility over the blocks
+                cx.fillStyle = "#000000";
+                cx.fillText(cTxt, cX + 2, cY + 2);
+                cx.fillStyle = BRK_C_COMBO_TXT;
+                cx.fillText(cTxt, cX, cY);
+                cx.textAlign    = "left";
+                cx.textBaseline = "alphabetic";
+            }
             break;
 
         case BRK_S_BALLLOST:
@@ -695,22 +742,29 @@ function brkDraw() {
 // =============================================================================
 const GAME = {
     title:    "Breakout",
-    subtitle: "Drag to aim · Click to launch",
+    subtitle: "Mouse to aim \u00b7 Click to launch",
 
     init(canvas) {
-        _brkCtx = canvas.getContext("2d");
-        brkPB   = SHELL_getPB(BRK_PB_KEY) || 0;
+        _brkCtx    = canvas.getContext("2d");
+        _brkCanvas = canvas;
+        brkPB      = SHELL_getPB(BRK_PB_KEY) || 0;
         brkLoadLevels();
+        // Register pointer-lock and free-mouse listeners once, for the lifetime
+        // of this game session.  document-level so they fire regardless of focus.
+        document.addEventListener("pointerlockchange", brkOnLockChange);
+        document.addEventListener("mousemove",         brkOnFreeMouse);
     },
 
     start() {
         if (!brkStages) return;   // levels not ready yet
         brkStartGame();
+        brkLockMouse();           // capture mouse — user clicked START (valid gesture)
     },
 
     reset() {
         if (!brkStages) return;
         brkStartGame();
+        brkLockMouse();           // re-capture mouse — user clicked RESET (valid gesture)
     },
 
     update(dt) {
@@ -749,12 +803,19 @@ const GAME = {
 
     draw() { brkDraw(); },
 
-    // Tap / click — launch ball from READY state
+    // Tap / click — launch ball from READY state.
+    // Also re-acquires pointer lock here in case the player pressed Escape
+    // to exit lock during READY, then clicked to launch.
     onClick(mx, my) {
-        if (brkState === BRK_S_READY) brkLaunch();
+        if (brkState === BRK_S_READY) {
+            brkLockMouse();
+            brkLaunch();
+        }
     },
 
-    // Drag (mousemove held, or touchmove) — move paddle
+    // Drag (touchmove, or held-mousemove on touch devices) — move paddle.
+    // On desktop the pointer-lock path above takes over, so onDrag is
+    // primarily for touch now.
     onDrag(mx, my) {
         brkPadX = mx;
         brkClampPad();
