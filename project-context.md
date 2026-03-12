@@ -25,7 +25,6 @@ the web portal. Code style is procedural, not object-oriented.
 /                           ← site root
   index.html                ← main portal (hub, routing, game catalogue)
   game.html                 ← standalone game player (new shell, v2)
-  game-v2.html              ← new desktop/tablet shell (960×640, webv2 type)
   favicon.ico
   assets/
     img/
@@ -35,23 +34,19 @@ the web portal. Code style is procedural, not object-oriented.
   webgames/                 ← all browser games live here
     shell.html              ← legacy shell wrapper (iframe host)
     shell.js                ← legacy shell logic
-    devtest/
-      devtest.js            ← shell sandbox / demo (not a real game)
     flappy/
       flappy.js
       flappy_atlas.png
       flappy_sky.png
       flappy_flap.ogg
-    breakout/
-      breakout.js
+    breakoutv2/
+      breakoutv2.js
       breakout.lev          ← level data, loaded via fetch()
       launch.ogg  relaunch.ogg  bounce.ogg  break.ogg
       combo1.ogg  combo2.ogg   solid.ogg    miss.ogg
       gameover.ogg  clear.ogg  hiscore.ogg
     snake/
       snake.js
-    pong/
-      pong.js
     shapes/
       shapes.js
     15puzzle/
@@ -72,20 +67,20 @@ the web portal. Code style is procedural, not object-oriented.
 
 ### 3a. Legacy Shell  (`shell.html` + `shell.js`)
 
-Lives at `./webgames/`. Used by all nine existing games.
+Lives at `./webgames/`. Used by seven remaining legacy games.
 
 - `shell.html` is a minimal wrapper: canvas 560×320, title bar, loads `shell.js`.
 - `shell.js` handles the RAF loop, fixed-step updates, buttons, mouse and touch
   input, personal best storage, and game loading.
 - Games are launched via `shell.html?game=flappy` etc.
 - The legacy shell is **frozen** — do not modify it for new features.
-  All nine existing games depend on it exactly as-is.
+  All seven legacy games depend on it exactly as-is.
 
 ### 3b. New Player Page  (`game.html`)
 
 Lives at the **site root** (`/game.html`). This is the active shell for all
-legacy-compatible play sessions (`type: "web"`). It embeds the shell logic
-directly (not via shell.js) with these additions over the legacy shell:
+future play sessions. It embeds the shell logic directly (not via shell.js) with
+these additions over the legacy shell:
 
 | Feature | Detail |
 |---|---|
@@ -96,39 +91,31 @@ directly (not via shell.js) with these additions over the legacy shell:
 | Asset path fix | `loadGame()` computes `new URL("./webgames/", location.href)` as an absolute base URL, injects a `<base>` tag into `<head>`, and sets the `<script src>` and back-button href as absolute URLs to escape the base. This keeps all game-internal relative asset paths (`new Image(); img.src = "flappy/bg.png"`) working exactly as they did under `shell.html`. |
 | Back button | Returns to `index.html#game/{id}` (the preview screen for that game). |
 
-**How `game.html` is called:**
-```
-game.html?id=flappy
-game.html?id=breakout
-```
-The `id` parameter must match the game's folder name and JS filename.
+### 3c. Desktop / Tablet Player  (`game-v2.html`)
 
-### 3c. Desktop / Tablet Shell  (`game-v2.html`)
+Lives at the **site root** (`/game-v2.html`). Active shell for all `"webv2"` games.
+Canvas is 960×640 logical pixels. Title bar is 44 px HTML above the canvas.
+The game owns the entire canvas — no shell-drawn buttons, no sidebar. Scaling,
+fullscreen, orientation, and back-button behaviour are identical to `game.html`.
 
-Lives at the **site root** (`/game-v2.html`). Used by all `type: "webv2"` games.
-
-| Spec | Value |
-|---|---|
-| Canvas logical size | **960 × 640** (never changes) |
-| Title bar height | **44 px** (HTML element, outside canvas) |
-| Total page area | **960 × 684 px** |
-| Safe on oldest landscape tablets | ✓ (768 px height minimum, 84 px headroom) |
-
-**Key design decisions:**
+Additional features over `game.html`:
 
 | Feature | Detail |
 |---|---|
-| Title bar separation | Title bar is a `<div>` above the `<canvas>` in DOM flow. Game draws from `(0,0)` freely — no awareness of the bar above it. Same as a Windows client area. |
-| No START button | Game starts automatically after `loadGame()` calls `GAME.init()` then `GAME.start()`. Player comes from the preview screen. |
-| Reset in title bar | Optional. Games call `SHELL_showReset(true)` to show it. Shell calls `GAME.reset()` on click. |
-| CSS scaling | `applyScale()` scales the entire `#v2-wrapper` (title bar + canvas as one unit). 80 ms debounce. |
-| Same API | `SHELL_isMuted()`, `SHELL_getPB()`, `SHELL_setPB()`, `SHELL_showReset()`, `SHELL_setTitle()` — all present. |
-| Asset path fix | Same `<base>` tag injection technique as `game.html`. |
+| Per-game sound cfg | On load, reads `yk_cfg_<id>` from localStorage and restores mute state before the game script runs. On every sound toggle, writes `{ muted: <bool> }` back. Missing key = sound on by default. |
+| Auto-start | `GAME.init()` then `GAME.start()` are called automatically after script load — no START button exists in this shell. |
+| Reset button | Shown in title bar when `GAME.reset` or `GAME.resetLabel` is declared. |
+
+**Shell constants available to games:**
+```js
+V2_CW = 960    V2_CH = 640    // canvas logical size
+```
 
 **How `game-v2.html` is called:**
 ```
-game-v2.html?id=devtest
+game-v2.html?id=breakoutv2
 ```
+The `id` must match the folder name and JS filename under `./webgames/`.
 
 ---
 
@@ -303,27 +290,29 @@ Shows a hero image, description, and download link(s). No canvas, no iframe.
 
 ---
 
-## 10. The Nine Existing Games
+## 10. Active Games
 
 **These games are frozen in behaviour. Never modify their JS files unless
 explicitly asked to fix a bug or add a specific feature. Never assume or invent
 controls, rules, or mechanics — always ask.**
 
+### Legacy shell games (`type: "web"`, canvas 560×320)
+
 | id | Name | Controls | Sound | Levels | Notes |
 |---|---|---|---|---|---|
 | `dungeon-crawler` | Dungeon Crawler | Arrow keys | No | Yes (.lev) | ASCII roguelike; collect all diamonds; four enemy types |
 | `snake` | Snake | Arrow keys, swipe | No | No | Classic snake |
-| `pong` | Pong | Left/right arrow keys only | No | No | Grid-based; don't let ball escape over the top |
-| `breakout` | Breakout | Hold LMB + drag to move paddle; left/right arrows also work; click/tap to launch ball | Yes (11 .ogg files) | Yes (.lev, 32 stages) | Combo system; extra ball on stage clear; stuck-ball timeout |
 | `flappy` | Flappy | Any key or tap to flap | Yes (1 .ogg) | No | Sprite atlas + sky background image |
 | `shapes` | Shapes | Drag pieces onto board | No | No | 8×8 board; fill rows/columns to clear |
 | `15puzzle` | 15 Puzzle | Click tile adjacent to empty space | No | No | 4×4 grid; arrange 1–15 in order |
 | `eliminate` | Eliminate | Click connected color groups | No | No | Board collapses inward; bigger groups score more |
 | `sokoban` | Sokoban | Arrow keys, swipe; R or tap Reset to restart level | No | Yes (.lev, 58 levels by Laura Wheeler) | Push crates onto blue goal fields |
 
-**Breakout mouse note:** Currently paddle moves by holding left mouse button
-while dragging. Free mouse tracking (move without holding) is a planned
-improvement but not yet implemented.
+### Desktop / tablet shell games (`type: "webv2"`, canvas 960×640)
+
+| id | Name | Controls | Sound | Levels | Notes |
+|---|---|---|---|---|---|
+| `breakoutv2` | Breakout | Drag anywhere to move paddle; tap/click to launch ball; left/right arrow keys also work; pointer lock on desktop | Yes (11 .ogg files) | Yes (.lev, 32 stages) | Combo system; extra ball on stage clear; stuck-ball timeout; free mouse via pointer lock |
 
 ---
 
@@ -336,45 +325,49 @@ The `type` field in each catalogue entry controls which player page the
 
 | type | Behaviour |
 |---|---|
-| `"web"` | Launches `game.html?id={id}` (legacy 560×320 shell) |
-| `"webv2"` | Launches `game-v2.html?id={id}` (new 960×640 desktop/tablet shell) |
+| `"web"` | Launches `game.html?id={id}` (legacy scaling player, 560×320) |
+| `"webv2"` | Launches `game-v2.html?id={id}` (desktop/tablet player, 960×640) |
 | `"win32"` | Shows download / hero view; no canvas |
 
 ### Planned future types
 
 | type | Intended shell | Status |
 |---|---|---|
-| `"phone"` | `game-phone.html` — portrait shell, ~9:16 canvas ratio, touch-first, on-screen controls baked in | Planned |
+| `"phone"` | `game-phone.html` — portrait shell, touch-first | Planned — see notes below |
 
-**All nine existing games remain on `"web"` / `game.html` forever.**
-New games targeting desktop/tablet use `"webv2"` / `game-v2.html`.
-New games targeting portrait mobile will use `"phone"` (shell not yet built).
+**Phone shell design notes:**
+- Architecture is technically almost identical to `game-v2.html` — same title bar
+  structure, same scaling approach, same input contract (`onClick`, `onDrag`,
+  `onSwipe`), same per-game sound cfg, same auto-start flow.
+- Canvas will be portrait orientation. Exact resolution is not yet decided.
+- Title bar layout and all shell behaviours are considered locked/agreed.
+- New games targeting portrait mobile will use `"phone"`. All existing games stay
+  on their current shell forever.
 
-The router in `index.html` will gain a branch per type when those shells exist.
+The router in `index.html` will gain a `"phone"` branch when the shell exists.
 Each shell page is self-contained; adding a new one requires zero changes to
 existing games or the catalogue structure beyond adding the new type branch.
 
 ---
 
-## 12. Sound Gating (Planned — Not Yet Implemented)
+## 12. Sound Gating — Implemented
 
-`game.html` exposes `SHELL_isMuted()` globally. When the mute button in the
-topbar is toggled, this returns `true`.
+Both `game.html` and `game-v2.html` expose `SHELL_isMuted()` globally.
+All games with audio wrap every `.play()` call with:
 
-**Plan:** For each game that has audio, wrap every `.play()` call with:
 ```js
-if (!SHELL_isMuted()) {
-    snd.currentTime = 0;
-    snd.play().catch(() => {});
-}
+if (!SHELL_isMuted()) { snd.currentTime = 0; snd.play().catch(() => {}); }
 ```
 
-Games with sound to update: **Breakout** (11 sound effects), **Flappy** (1 sound
-effect). All other seven games currently have no audio.
+`game-v2.html` additionally persists the mute state **per game** in localStorage
+using the key `yk_cfg_<gameId>` (e.g. `yk_cfg_breakoutv2`). Value is
+`{ muted: <bool> }`. Missing key = sound on by default. The cfg is written on
+every toggle and read back at the start of `v2LoadGame()` before the game script
+runs — so `SHELL_isMuted()` is already correct during `init()`.
 
-`SHELL_isMuted()` is not defined in the legacy `shell.js`, only in `game.html`.
-This is intentional — the legacy shell and iframe path are frozen. Sound gating
-only applies when games are run via `game.html`.
+`SHELL_isMuted()` is not defined in the legacy `shell.js`, only in `game.html`
+and `game-v2.html`. The legacy shell and iframe path are frozen; sound gating
+only applies to games running through the modern shells.
 
 ---
 
@@ -386,13 +379,9 @@ These are noted intentions, not commitments. Raise before implementing.
   username registration. The preview screen (`#game/{id}`) is the natural home
   for displaying rankings. Personal bests already stored client-side via
   `SHELL_getPB` / `SHELL_setPB` — these can seed or compare against global scores.
-- **Breakout paddle improvement:** Move paddle on free mouse movement (no hold
-  required). Requires a small change to `breakout.js` and potentially a
-  `onMouseMove` or renamed `onDrag` semantics clarification.
-- **Phone shell:** Portrait-first layout. On-screen d-pad or gesture zones as
-  part of the shell rather than per-game. New games only.
-- **Desktop v2 shell:** Refinements to current layout — better score panel,
-  possibly integrated sound and fullscreen controls inside the canvas frame.
+- **Phone shell:** Portrait-first layout. Architecture mirrors `game-v2.html`
+  exactly — same title bar, scaling, input contract, sound cfg. Canvas resolution
+  not yet decided. New games only; no existing game will be ported to it.
 
 ---
 
@@ -409,7 +398,7 @@ These are noted intentions, not commitments. Raise before implementing.
 7. When adding a new game to the catalogue: add `id`, `type`, `name`, `desc`,
    `how`, `chips`, `icon`, `thumb` — all fields required. Verify `how` is
    accurate before writing it.
-8. The `<base>` tag trick in `game.html` is load-order sensitive. The base tag
-   is injected inside `loadGame()` before the game script tag is appended.
-   The script `src` and back-button `href` are set as absolute URLs (via
-   `new URL(...)`) to escape the base. Do not restructure this without care.
+8. The `<base>` tag trick applies to both `game.html` and `game-v2.html`. The base
+   tag is injected inside `loadGame()` / `v2LoadGame()` before the game script tag
+   is appended. The script `src` and back-button `href` are set as absolute URLs
+   (via `new URL(...)`) to escape the base. Do not restructure this without care.
