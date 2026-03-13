@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Yorokobi Games</title>
+    <style>
+
+        /* ------------------------------------------------------------------ */
+        /*  RESET & BASE                                                        */
+        /* ------------------------------------------------------------------ */
+
+        *, *::before, *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            background: #ddeef8;
+            overflow: hidden;
+            position: relative;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        /* ------------------------------------------------------------------ */
+        /*  OUTER WRAPPER — scales as a unit (title bar + canvas together)     */
+        /*  position: absolute so CSS transform doesn't affect layout flow.    */
+        /*  phnApplyScale() sets transform + top/left explicitly every time.   */
+        /*  Total logical size: 360 × 640  (44 titlebar + 596 canvas)          */
+        /* ------------------------------------------------------------------ */
+
+        #phn-wrapper {
+            position: absolute;
+            display: flex;
+            flex-direction: column;
+            width: 360px;
+            height: 640px;
+            transform-origin: top left;
+            /* top / left / transform set by phnApplyScale() at runtime */
+        }
+
+        /* ------------------------------------------------------------------ */
+        /*  TITLE BAR  (44 px, pure HTML — canvas knows nothing about it)      */
+        /* ------------------------------------------------------------------ */
+
+        #phn-titlebar {
+            width: 360px;
+            height: 44px;
+            background: #ffffff;
+            border-bottom: 1px solid #1c2333;
+            display: flex;
+            align-items: center;
+            flex-shrink: 0;
+            position: relative;
+            user-select: none;
+        }
+
+        /* left cluster: back button only */
+        #phn-left {
+            display: flex;
+            align-items: center;
+            padding-left: 8px;
+        }
+
+        /* center: game title */
+        #phn-title {
+            position: absolute;
+            left: 0;
+            right: 0;
+            text-align: center;
+            color: #1c2333;
+            font-size: 15px;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            pointer-events: none;
+        }
+
+        /* right cluster: sound + fullscreen */
+        #phn-right {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding-right: 8px;
+            margin-left: auto;
+        }
+
+        /* shared title bar button style */
+        .phn-tbtn {
+            width: 32px;
+            height: 32px;
+            border: none;
+            border-radius: 6px;
+            background: transparent;
+            color: #5a6a80;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.15s, color 0.15s;
+        }
+
+        .phn-tbtn:hover {
+            background: rgba(0,120,212,.08);
+            color: #1c2333;
+        }
+
+        .phn-tbtn:active {
+            background: rgba(0,120,212,.16);
+        }
+
+        .phn-tbtn svg {
+            width: 20px;
+            height: 20px;
+            display: block;
+        }
+
+        /* back button slightly wider to fit text label */
+        #phn-btn-back {
+            width: auto;
+            padding: 0 10px;
+            gap: 6px;
+            font-size: 13px;
+            font-weight: 500;
+            letter-spacing: 0.02em;
+        }
+
+        /* muted state indicator */
+        #phn-btn-sound.phn-muted {
+            color: #c0392b;
+        }
+
+        /* ------------------------------------------------------------------ */
+        /*  CANVAS  (360 × 596 — logical game resolution, never changes)      */
+        /* ------------------------------------------------------------------ */
+
+        #phn-canvas {
+            display: block;
+            width: 360px;
+            height: 596px;
+            background: #000;
+            flex-shrink: 0;
+            image-rendering: pixelated;
+            /* Prevent long-press context menus and system gestures */
+            -webkit-touch-callout: none;
+            touch-action: none;
+        }
+
+    </style>
+</head>
+<body>
+
+<!-- ========================================================================
+     SHELL LAYOUT
+     Title bar (44 px) + Canvas (360×596) = 640 px total height.
+     Total wrapper logical size: 360 × 640.
+     The game never draws outside (0,0)-(360,596) and has no knowledge
+     of the title bar above it.
+     Reset controls, if needed, are drawn on the canvas by the game
+     itself and handled via onClick.
+     ======================================================================== -->
+
+<div id="phn-wrapper">
+
+    <!-- TITLE BAR -->
+    <div id="phn-titlebar">
+
+        <div id="phn-left">
+            <button id="phn-btn-back" class="phn-tbtn" title="Back to games">
+                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 4 L6 10 L12 16"/>
+                </svg>
+                Back
+            </button>
+        </div>
+
+        <!-- Centred game title -->
+        <div id="phn-title">Yorokobi Games</div>
+
+        <div id="phn-right">
+
+            <!-- Toggle sound -->
+            <button id="phn-btn-sound" class="phn-tbtn" title="Toggle sound">
+                <svg id="phn-icon-sound-on" viewBox="0 0 20 20" fill="none"
+                     stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 7 L7 7 L11 3 L11 17 L7 13 L3 13 Z"/>
+                    <path d="M14 6.5 a4.5 4.5 0 0 1 0 7"/>
+                    <path d="M16.5 4 a8 8 0 0 1 0 12"/>
+                </svg>
+                <svg id="phn-icon-sound-off" viewBox="0 0 20 20" fill="none"
+                     stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round"
+                     style="display:none">
+                    <path d="M3 7 L7 7 L11 3 L11 17 L7 13 L3 13 Z"/>
+                    <line x1="14" y1="8" x2="19" y2="13"/>
+                    <line x1="19" y1="8" x2="14" y2="13"/>
+                </svg>
+            </button>
+
+            <!-- Toggle fullscreen -->
+            <button id="phn-btn-fs" class="phn-tbtn" title="Fullscreen">
+                <svg id="phn-icon-fs-enter" viewBox="0 0 20 20" fill="none"
+                     stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 8 L3 3 L8 3"/>
+                    <path d="M17 8 L17 3 L12 3"/>
+                    <path d="M3 12 L3 17 L8 17"/>
+                    <path d="M17 12 L17 17 L12 17"/>
+                </svg>
+                <svg id="phn-icon-fs-exit" viewBox="0 0 20 20" fill="none"
+                     stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round"
+                     style="display:none">
+                    <path d="M8 3 L8 8 L3 8"/>
+                    <path d="M12 3 L12 8 L17 8"/>
+                    <path d="M8 17 L8 12 L3 12"/>
+                    <path d="M12 17 L12 12 L17 12"/>
+                </svg>
+            </button>
+
+        </div>
+
+    </div>
+    <!-- /TITLE BAR -->
+
+    <!-- GAME CANVAS — logical size 360×596, never changes -->
+    <canvas id="phn-canvas" width="360" height="596"></canvas>
+
+</div>
+<!-- /phn-wrapper -->
+
+
+<script>
+/* ============================================================================
+   GAME-PHONE SHELL  —  Yorokobi Games
+   Portrait / phone shell.
+   Canvas: 360 × 596 (logical, never changes).
+   Title bar: 44 px (HTML, outside canvas — game draws from 0,0 freely).
+   Total wrapper logical area: 360 × 640.
+   Touch-only input. No mouse events.
+
+   Reset controls are the game's responsibility — drawn on the canvas,
+   handled in onClick. The shell title bar contains only Back / Sound /
+   Fullscreen.
+   ============================================================================ */
+
+"use strict";
+
+/* --------------------------------------------------------------------------
+   SHELL CONSTANTS
+   Games may read these freely.
+   -------------------------------------------------------------------------- */
+
+var PHN_CW       = 360;     /* canvas logical width                           */
+var PHN_CH       = 596;     /* canvas logical height                          */
+var PHN_TBHEIGHT = 44;      /* title bar height in px                         */
+
+/* --------------------------------------------------------------------------
+   DOM REFERENCES
+   -------------------------------------------------------------------------- */
+
+var phnWrapper      = document.getElementById("phn-wrapper");
+var phnCanvas       = document.getElementById("phn-canvas");
+var phnTitleEl      = document.getElementById("phn-title");
+var phnBtnBack      = document.getElementById("phn-btn-back");
+var phnBtnSound     = document.getElementById("phn-btn-sound");
+var phnBtnFs        = document.getElementById("phn-btn-fs");
+
+var phnIconSoundOn  = document.getElementById("phn-icon-sound-on");
+var phnIconSoundOff = document.getElementById("phn-icon-sound-off");
+var phnIconFsEnter  = document.getElementById("phn-icon-fs-enter");
+var phnIconFsExit   = document.getElementById("phn-icon-fs-exit");
+
+var phnCtx = phnCanvas.getContext("2d");
+
+/* --------------------------------------------------------------------------
+   STATE
+   -------------------------------------------------------------------------- */
+
+var phnMuted        = false;
+var phnGameRunning  = false;
+var phnLastTime     = 0;
+var phnAccumulator  = 0;
+var phnFixedStep    = 10;           /* ms — fixed update step, same as legacy */
+var phnGameLoaded   = false;
+var phnGameId       = "";
+var phnBackUrl      = "index.html#games";   /* set to absolute URL in loadGame */
+
+/* --------------------------------------------------------------------------
+   PUBLIC API — available to game scripts
+   -------------------------------------------------------------------------- */
+
+/* Returns true when the player has muted sound. */
+function SHELL_isMuted() {
+    return phnMuted;
+}
+
+/* Personal best storage — same API as all other shells. */
+function SHELL_getPB(pbKey) {
+    try {
+        var raw = localStorage.getItem("yk_pb_" + pbKey);
+        return raw !== null ? JSON.parse(raw) : null;
+    } catch (e) {
+        return null;
+    }
+}
+
+function SHELL_setPB(pbKey, pbVal) {
+    try {
+        localStorage.setItem("yk_pb_" + pbKey, JSON.stringify(pbVal));
+    } catch (e) { /* quota or private mode — silently ignore */ }
+}
+
+/* Per-game sound config — stored as "yk_cfg_<gameId>".
+   Value is { muted: <bool> }. Missing key = sound on by default. */
+function phnReadGameCfg(gameId) {
+    try {
+        var raw = localStorage.getItem("yk_cfg_" + gameId);
+        return raw !== null ? JSON.parse(raw) : { muted: false };
+    } catch (e) {
+        return { muted: false };
+    }
+}
+
+function phnWriteGameCfg(gameId) {
+    try {
+        localStorage.setItem("yk_cfg_" + gameId, JSON.stringify({ muted: phnMuted }));
+    } catch (e) { /* quota or private mode — silently ignore */ }
+}
+
+/* Override the title bar text. */
+function SHELL_setTitle(titleText) {
+    phnTitleEl.textContent = titleText;
+}
+
+/* --------------------------------------------------------------------------
+   SCALE — fits wrapper (360 × 640) into the viewport.
+   Called on load and on every resize / orientation change.
+   -------------------------------------------------------------------------- */
+
+var phnScaleTimer = 0;
+
+function phnApplyScale() {
+    var availW = window.innerWidth;
+    var availH = window.innerHeight;
+    var totalH = PHN_CH + PHN_TBHEIGHT;     /* 640 */
+    var scaleW = availW / PHN_CW;
+    var scaleH = availH / totalH;
+    var scale  = Math.min(scaleW, scaleH);
+
+    var scaledW = PHN_CW * scale;
+    var scaledH = totalH * scale;
+
+    var leftPx = Math.round((availW - scaledW) / 2);
+    var topPx  = Math.round((availH - scaledH) / 2);
+
+    phnWrapper.style.left      = leftPx + "px";
+    phnWrapper.style.top       = topPx  + "px";
+    phnWrapper.style.transform = "scale(" + scale + ")";
+}
+
+window.addEventListener("resize", function () {
+    clearTimeout(phnScaleTimer);
+    phnScaleTimer = setTimeout(phnApplyScale, 80);
+});
+
+if (window.screen && window.screen.orientation) {
+    window.screen.orientation.addEventListener("change", function () {
+        clearTimeout(phnScaleTimer);
+        phnScaleTimer = setTimeout(phnApplyScale, 80);
+    });
+}
+
+window.addEventListener("orientationchange", function () {
+    clearTimeout(phnScaleTimer);
+    phnScaleTimer = setTimeout(phnApplyScale, 80);
+});
+
+/* --------------------------------------------------------------------------
+   FULLSCREEN
+   -------------------------------------------------------------------------- */
+
+function phnToggleFullscreen() {
+    if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(function () {});
+    } else {
+        document.exitFullscreen().catch(function () {});
+    }
+}
+
+function phnOnFullscreenChange() {
+    var inFs = !!document.fullscreenElement;
+    phnIconFsEnter.style.display = inFs ? "none" : "";
+    phnIconFsExit.style.display  = inFs ? ""     : "none";
+    phnApplyScale();
+}
+
+document.addEventListener("fullscreenchange",       phnOnFullscreenChange);
+document.addEventListener("webkitfullscreenchange", phnOnFullscreenChange);
+
+phnBtnFs.addEventListener("click", phnToggleFullscreen);
+
+/* --------------------------------------------------------------------------
+   SOUND TOGGLE
+   -------------------------------------------------------------------------- */
+
+function phnToggleSound() {
+    phnMuted = !phnMuted;
+    phnIconSoundOn.style.display  = phnMuted ? "none" : "";
+    phnIconSoundOff.style.display = phnMuted ? ""     : "none";
+    phnBtnSound.classList.toggle("phn-muted", phnMuted);
+    if (phnGameId) phnWriteGameCfg(phnGameId);
+}
+
+phnBtnSound.addEventListener("click", phnToggleSound);
+
+/* --------------------------------------------------------------------------
+   BACK BUTTON
+   -------------------------------------------------------------------------- */
+
+phnBtnBack.addEventListener("click", function () {
+    window.location.href = phnBackUrl;
+});
+
+/* --------------------------------------------------------------------------
+   RAF LOOP
+   Fixed-step updates at phnFixedStep ms, uncapped draw.
+   -------------------------------------------------------------------------- */
+
+function phnLoop(timestamp) {
+    requestAnimationFrame(phnLoop);
+
+    if (!phnGameRunning) return;
+
+    var dt = timestamp - phnLastTime;
+    phnLastTime = timestamp;
+
+    if (dt > 200) dt = 200;
+
+    phnAccumulator += dt;
+    while (phnAccumulator >= phnFixedStep) {
+        GAME.update(phnFixedStep);
+        phnAccumulator -= phnFixedStep;
+    }
+
+    GAME.draw();
+}
+
+/* --------------------------------------------------------------------------
+   INPUT — touch only, no mouse.
+
+   Gesture classification — overview
+   ───────────────────────────────────────────────────────────────────────────
+   Swipe vs drag cannot be decided until the finger lifts. The distinguishing
+   factor is VELOCITY, not distance. A long slow drag and a long fast swipe
+   travel the same distance; only speed tells them apart.
+
+   How velocity is measured:
+     Every touchmove that passes the jitter gate appends a {x, y, t} sample
+     to phnMoveHist (capped at PHN_HIST_LEN entries). At touchend we look
+     back through the history for the oldest sample within PHN_VEL_WINDOW ms
+     and compute speed = dist / elapsed. If speed >= phnSwipeSpeed the
+     gesture is a swipe, otherwise it is a drag.
+
+   Note: onDrag WILL fire briefly during what turns out to be a swipe,
+   because intent is unknown until the finger lifts. Games that use onDrag
+   (e.g. dragging an object) should handle an onDragEnd + onSwipe sequence
+   arriving after some onDrag calls by cancelling the drag operation.
+
+   Full event sequences
+   ───────────────────────────────────────────────────────────────────────────
+   Tap:   onDragStart → onClick
+   Drag:  onDragStart → onDrag… → onDragEnd
+   Swipe: onDragStart → onDrag… → onDragEnd → onSwipe
+
+   Thresholds
+   ───────────────────────────────────────────────────────────────────────────
+   phnJitterThresh  6 px   — touchmove below this is tap jitter, ignored
+   phnSwipeSpeed   0.5 px/ms — minimum finger speed to classify as swipe
+   phnSwipeMinDist 20 px   — minimum total displacement guard (no micro-swipes)
+   PHN_VEL_WINDOW  100 ms  — how far back in history to sample for velocity
+
+   All coordinates are in logical canvas space. Games do not handle scaling.
+   -------------------------------------------------------------------------- */
+
+var phnDragActive   = false;
+var phnDragMoved    = false;
+var phnTouchStartX  = 0;
+var phnTouchStartY  = 0;
+var phnJitterThresh = 6;        /* px logical                                 */
+var phnSwipeSpeed   = 0.5;      /* px/ms — above this = swipe                 */
+var phnSwipeMinDist = 20;       /* px logical — minimum displacement for swipe*/
+
+/* Velocity history — small ring buffer of recent touchmove samples. */
+var PHN_HIST_LEN    = 6;
+var PHN_VEL_WINDOW  = 100;      /* ms — look back this far for velocity sample*/
+var phnMoveHist     = [];       /* [{x, y, t}, …]                             */
+
+function phnCanvasCoords(clientX, clientY) {
+    var rc = phnCanvas.getBoundingClientRect();
+    var mx = (clientX - rc.left)  * (PHN_CW / rc.width);
+    var my = (clientY - rc.top)   * (PHN_CH / rc.height);
+    return { x: mx, y: my };
+}
+
+phnCanvas.addEventListener("touchstart", function (e) {
+    if (!phnGameRunning) return;
+    e.preventDefault();
+    var t  = e.changedTouches[0];
+    var pt = phnCanvasCoords(t.clientX, t.clientY);
+    phnTouchStartX = pt.x;
+    phnTouchStartY = pt.y;
+    phnDragActive  = true;
+    phnDragMoved   = false;
+    phnMoveHist    = [];
+    if (typeof GAME.onDragStart === "function") GAME.onDragStart(pt.x, pt.y);
+}, { passive: false });
+
+phnCanvas.addEventListener("touchmove", function (e) {
+    if (!phnGameRunning || !phnDragActive) return;
+    e.preventDefault();
+    var t   = e.changedTouches[0];
+    var pt  = phnCanvasCoords(t.clientX, t.clientY);
+    var ddx = pt.x - phnTouchStartX;
+    var ddy = pt.y - phnTouchStartY;
+
+    /* Ignore jitter until finger has moved meaningfully. */
+    if (!phnDragMoved && Math.sqrt(ddx * ddx + ddy * ddy) < phnJitterThresh) return;
+
+    phnDragMoved = true;
+
+    /* Record sample for velocity calculation. */
+    phnMoveHist.push({ x: pt.x, y: pt.y, t: performance.now() });
+    if (phnMoveHist.length > PHN_HIST_LEN) phnMoveHist.shift();
+
+    if (typeof GAME.onDrag === "function") GAME.onDrag(pt.x, pt.y);
+}, { passive: false });
+
+phnCanvas.addEventListener("touchend", function (e) {
+    if (!phnGameRunning) return;
+    e.preventDefault();
+    phnDragActive = false;
+
+    var t    = e.changedTouches[0];
+    var pt   = phnCanvasCoords(t.clientX, t.clientY);
+    var dx   = pt.x - phnTouchStartX;
+    var dy   = pt.y - phnTouchStartY;
+    var dist = Math.sqrt(dx * dx + dy * dy);
+
+    if (phnDragMoved) {
+        /* Drag confirmed — always close it. */
+        if (typeof GAME.onDragEnd === "function") GAME.onDragEnd(pt.x, pt.y);
+
+        /* Velocity check — find oldest sample within PHN_VEL_WINDOW ms. */
+        var isSwipe  = false;
+        var now      = performance.now();
+        var sample   = null;
+        var hi;
+        for (hi = 0; hi < phnMoveHist.length; hi++) {
+            if (now - phnMoveHist[hi].t <= PHN_VEL_WINDOW) {
+                sample = phnMoveHist[hi];
+                break;
+            }
+        }
+        /* Fall back to oldest recorded sample if none found in window. */
+        if (sample === null && phnMoveHist.length > 0) sample = phnMoveHist[0];
+
+        if (sample !== null && dist >= phnSwipeMinDist) {
+            var velDt = now - sample.t;
+            if (velDt > 0) {
+                var velDx = pt.x - sample.x;
+                var velDy = pt.y - sample.y;
+                var speed = Math.sqrt(velDx * velDx + velDy * velDy) / velDt;
+                if (speed >= phnSwipeSpeed) isSwipe = true;
+            }
+        }
+
+        if (isSwipe && typeof GAME.onSwipe === "function") {
+            /* Direction from full gesture (start → end) for reliability. */
+            var swipeDir;
+            if (Math.abs(dx) >= Math.abs(dy)) {
+                swipeDir = dx > 0 ? "right" : "left";
+            } else {
+                swipeDir = dy > 0 ? "down" : "up";
+            }
+            GAME.onSwipe(swipeDir);
+        }
+    } else {
+        /* Clean tap — no movement past jitter threshold. */
+        if (typeof GAME.onClick === "function") GAME.onClick(pt.x, pt.y);
+    }
+
+    phnDragMoved = false;
+    phnMoveHist  = [];
+}, { passive: false });
+
+phnCanvas.addEventListener("touchcancel", function (e) {
+    if (!phnGameRunning || !phnDragActive) return;
+    phnDragActive = false;
+    if (phnDragMoved && typeof GAME.onDragEnd === "function") {
+        var t  = e.changedTouches[0];
+        var pt = phnCanvasCoords(t.clientX, t.clientY);
+        GAME.onDragEnd(pt.x, pt.y);
+    }
+    phnDragMoved = false;
+    phnMoveHist  = [];
+}, { passive: false });
+
+/* --------------------------------------------------------------------------
+   GAME LOADING
+   URL param: game-phone.html?id=mygame
+   Expects:   webgames/mygame/mygame.js
+   Game starts automatically after script loads (no START button).
+   -------------------------------------------------------------------------- */
+
+function phnLoadGame(gameId) {
+    phnGameId = gameId;
+
+    phnBackUrl = new URL("index.html#game/" + gameId, location.href).href;
+
+    var cfg = phnReadGameCfg(gameId);
+    phnMuted = cfg.muted;
+    phnIconSoundOn.style.display  = phnMuted ? "none" : "";
+    phnIconSoundOff.style.display = phnMuted ? ""     : "none";
+    phnBtnSound.classList.toggle("phn-muted", phnMuted);
+
+    var baseTag = document.createElement("base");
+    baseTag.href = new URL("./webgames/", location.href).href;
+    document.head.appendChild(baseTag);
+
+    var script = document.createElement("script");
+    script.src = new URL("webgames/" + gameId + "/" + gameId + ".js", location.href).href;
+
+    script.onload = function () {
+        if (typeof GAME === "undefined") {
+            phnShowError("Game script loaded but GAME object not found.");
+            return;
+        }
+
+        SHELL_setTitle(typeof GAME.title === "string" ? GAME.title : gameId);
+
+        if (typeof GAME.init === "function") GAME.init(phnCanvas);
+
+        phnGameLoaded  = true;
+        phnGameRunning = true;
+        phnLastTime    = performance.now();
+        phnAccumulator = 0;
+
+        if (typeof GAME.start === "function") GAME.start();
+
+        requestAnimationFrame(phnLoop);
+    };
+
+    script.onerror = function () {
+        phnShowError("Could not load game: " + gameId);
+    };
+
+    document.body.appendChild(script);
+}
+
+/* --------------------------------------------------------------------------
+   IDLE / ERROR SCREENS
+   -------------------------------------------------------------------------- */
+
+function phnDrawIdleScreen() {
+    var ctx = phnCtx;
+    ctx.fillStyle = "#c8dff0";
+    ctx.fillRect(0, 0, PHN_CW, PHN_CH);
+
+    ctx.fillStyle = "#b0c4d8";
+    ctx.fillRect(0, 0, PHN_CW, 1);
+
+    ctx.fillStyle = "#0078d4";
+    ctx.font = "bold 22px 'Segoe UI', sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("game-phone shell", PHN_CW / 2, PHN_CH / 2 - 28);
+
+    ctx.fillStyle = "#5a6a80";
+    ctx.font = "14px 'Segoe UI', sans-serif";
+    ctx.fillText(PHN_CW + " \xd7 " + PHN_CH + "  \u2014  add ?id=gameid to load", PHN_CW / 2, PHN_CH / 2 + 4);
+
+    ctx.fillStyle = "#1c2333";
+    ctx.font = "12px 'Segoe UI', sans-serif";
+    ctx.fillText("(0,0) is the top-left of this canvas.", PHN_CW / 2, PHN_CH / 2 + 30);
+    ctx.fillText("The title bar lives outside it.", PHN_CW / 2, PHN_CH / 2 + 48);
+}
+
+function phnShowError(msg) {
+    var ctx = phnCtx;
+    ctx.fillStyle = "#1a0000";
+    ctx.fillRect(0, 0, PHN_CW, PHN_CH);
+    ctx.fillStyle = "#ff4444";
+    ctx.font = "bold 16px 'Segoe UI', sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(msg, PHN_CW / 2, PHN_CH / 2);
+}
+
+/* --------------------------------------------------------------------------
+   BOOT
+   -------------------------------------------------------------------------- */
+
+phnApplyScale();
+
+var phnParams  = new URLSearchParams(location.search);
+var phnIdParam = phnParams.get("id");
+
+if (phnIdParam) {
+    phnLoadGame(phnIdParam);
+} else {
+    phnDrawIdleScreen();
+}
+
+</script>
+</body>
+</html>

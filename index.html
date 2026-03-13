@@ -316,6 +316,16 @@
         thumb: "./assets/img/thumbs/snake.png"
       },
       {
+        id:    "bubble-shooter",
+        type:  "phone",
+        name:  "Bubble Shooter",
+        desc:  "Classic hex-grid bubble shooter. 2 minutes on the clock — pop as many as you can!",
+        how:   "Tap or drag to aim, release to fire. Match 3 or more bubbles of the same colour to pop them. Unconnected bubbles fall for bonus points. Bigger clears score multipliers. New rows push in when the grid clears. Audio by Alex McCulloch, rubberduck and WobbleBoxx Workshop.",
+        chips: ["Touch Device"],
+        icon:  "\u25cf",
+        thumb: "./assets/img/thumbs/bubble-shooter.png"
+      },
+      {
         id:    "breakoutv2",
         type:  "webv2",
         name:  "Breakout",
@@ -374,16 +384,6 @@
         chips: ["Desktop Browser", "Touch Device"],
         icon:  "+",
         thumb: "./assets/img/thumbs/sokoban.png"
-      },
-      {
-        id:    "devtest",
-        type:  "webv2",
-        name:  "Development Test",
-        desc:  "Not a game. A canvas sandbox for testing the game-v2 shell: scaling, title bar, input, audio gate and storage API.",
-        how:   "Click anywhere to spawn a bouncing ball. Each ball picks up your click position. Reset clears all balls. Music Loop by Jordan (Joth) from opengameart.org",
-        chips: ["Desktop Browser", "Tablet"],
-        icon:  "\u2699",
-        thumb: ""
       }
 
       // ── example win32 entry ──────────────────────────────────────────────
@@ -416,6 +416,7 @@
         if(cl === "tablet")          cls += " v2";
         if(cl === "win32")           cls += " win";
         if(cl === "touch device")    cls += " mob";
+        if(cl === "phone")           cls += " mob";
         return `<span class="${cls}">${escHtml(c)}</span>`;
       }).join("");
     }
@@ -482,6 +483,8 @@
       let startUrl;
       if(g.type === "webv2"){
         startUrl = `game-v2.html?id=${encodeURIComponent(g.id)}`;
+      } else if(g.type === "phone"){
+        startUrl = `game-phone.html?id=${encodeURIComponent(g.id)}`;
       } else {
         startUrl = `game.html?id=${encodeURIComponent(g.id)}`;
       }

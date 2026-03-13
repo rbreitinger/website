@@ -499,17 +499,45 @@ function v2Loop(timestamp) {
 /* --------------------------------------------------------------------------
    INPUT
    All coords are de-scaled to logical canvas space (960×640).
+
+   Touch gesture classification — swipe vs drag uses VELOCITY, not distance.
+   See game-phone.html for the full design rationale; logic is identical here.
+
+   Thresholds
+     v2JitterThresh  6 px    — touchmove below this is tap jitter, ignored
+     v2SwipeSpeed    0.5 px/ms — minimum finger speed to classify as swipe
+     v2SwipeMinDist  20 px   — minimum total displacement guard
+     V2_VEL_WINDOW   100 ms  — history window for velocity sample
+
+   Full touch sequences
+     Tap:   onDragStart → onClick
+     Drag:  onDragStart → onDrag… → onDragEnd
+     Swipe: onDragStart → onDrag… → onDragEnd → onSwipe
+     (onDrag will fire briefly during what becomes a swipe — intent is
+      unknowable until liftoff. Games using onDrag should handle an
+      onDragEnd + onSwipe pair arriving after some onDrag calls.)
+
+   Mouse sequences (no jitter / velocity logic needed for pointer input)
+     Click:  onDragStart → onClick  (on mousedown)
+     Drag:   onDragStart → onDrag… → onDragEnd
    -------------------------------------------------------------------------- */
 
 var v2DragActive    = false;
+var v2DragMoved     = false;
 var v2TouchStartX   = 0;
 var v2TouchStartY   = 0;
-var v2SwipeThresh   = 20;       /* px in logical space */
+var v2JitterThresh  = 6;        /* px logical — below this = tap jitter       */
+var v2SwipeSpeed    = 0.5;      /* px/ms — above this = swipe                 */
+var v2SwipeMinDist  = 20;       /* px logical — minimum displacement for swipe*/
+
+var V2_HIST_LEN     = 6;
+var V2_VEL_WINDOW   = 100;      /* ms */
+var v2MoveHist      = [];       /* [{x, y, t}, …]                             */
 
 function v2CanvasCoords(clientX, clientY) {
-    var rc    = v2Canvas.getBoundingClientRect();
-    var mx    = (clientX - rc.left)  * (V2_CW / rc.width);
-    var my    = (clientY - rc.top)   * (V2_CH / rc.height);
+    var rc = v2Canvas.getBoundingClientRect();
+    var mx = (clientX - rc.left)  * (V2_CW / rc.width);
+    var my = (clientY - rc.top)   * (V2_CH / rc.height);
     return { x: mx, y: my };
 }
 
@@ -519,7 +547,8 @@ v2Canvas.addEventListener("mousedown", function (e) {
     if (!v2GameRunning) return;
     v2DragActive = true;
     var pt = v2CanvasCoords(e.clientX, e.clientY);
-    if (typeof GAME.onClick === "function") GAME.onClick(pt.x, pt.y);
+    if (typeof GAME.onDragStart === "function") GAME.onDragStart(pt.x, pt.y);
+    if (typeof GAME.onClick    === "function") GAME.onClick(pt.x, pt.y);
 });
 
 v2Canvas.addEventListener("mousemove", function (e) {
@@ -528,8 +557,13 @@ v2Canvas.addEventListener("mousemove", function (e) {
     if (typeof GAME.onDrag === "function") GAME.onDrag(pt.x, pt.y);
 });
 
-window.addEventListener("mouseup", function () {
+window.addEventListener("mouseup", function (e) {
+    if (!v2DragActive) return;
     v2DragActive = false;
+    if (v2GameRunning && typeof GAME.onDragEnd === "function") {
+        var pt = v2CanvasCoords(e.clientX, e.clientY);
+        GAME.onDragEnd(pt.x, pt.y);
+    }
 });
 
 /* --- Touch --- */
@@ -542,13 +576,27 @@ v2Canvas.addEventListener("touchstart", function (e) {
     v2TouchStartX = pt.x;
     v2TouchStartY = pt.y;
     v2DragActive  = true;
+    v2DragMoved   = false;
+    v2MoveHist    = [];
+    if (typeof GAME.onDragStart === "function") GAME.onDragStart(pt.x, pt.y);
 }, { passive: false });
 
 v2Canvas.addEventListener("touchmove", function (e) {
     if (!v2GameRunning || !v2DragActive) return;
     e.preventDefault();
-    var t  = e.changedTouches[0];
-    var pt = v2CanvasCoords(t.clientX, t.clientY);
+    var t   = e.changedTouches[0];
+    var pt  = v2CanvasCoords(t.clientX, t.clientY);
+    var ddx = pt.x - v2TouchStartX;
+    var ddy = pt.y - v2TouchStartY;
+
+    /* Ignore jitter until finger has moved meaningfully. */
+    if (!v2DragMoved && Math.sqrt(ddx * ddx + ddy * ddy) < v2JitterThresh) return;
+
+    v2DragMoved = true;
+
+    v2MoveHist.push({ x: pt.x, y: pt.y, t: performance.now() });
+    if (v2MoveHist.length > V2_HIST_LEN) v2MoveHist.shift();
+
     if (typeof GAME.onDrag === "function") GAME.onDrag(pt.x, pt.y);
 }, { passive: false });
 
@@ -556,25 +604,68 @@ v2Canvas.addEventListener("touchend", function (e) {
     if (!v2GameRunning) return;
     e.preventDefault();
     v2DragActive = false;
-    var t   = e.changedTouches[0];
-    var pt  = v2CanvasCoords(t.clientX, t.clientY);
-    var dx  = pt.x - v2TouchStartX;
-    var dy  = pt.y - v2TouchStartY;
+
+    var t    = e.changedTouches[0];
+    var pt   = v2CanvasCoords(t.clientX, t.clientY);
+    var dx   = pt.x - v2TouchStartX;
+    var dy   = pt.y - v2TouchStartY;
     var dist = Math.sqrt(dx * dx + dy * dy);
 
-    if (dist >= v2SwipeThresh) {
-        if (typeof GAME.onSwipe === "function") {
-            var dir;
-            if (Math.abs(dx) >= Math.abs(dy)) {
-                dir = dx > 0 ? "right" : "left";
-            } else {
-                dir = dy > 0 ? "down" : "up";
+    if (v2DragMoved) {
+        /* Drag confirmed — always close it. */
+        if (typeof GAME.onDragEnd === "function") GAME.onDragEnd(pt.x, pt.y);
+
+        /* Velocity check against recent move history. */
+        var isSwipe = false;
+        var now     = performance.now();
+        var sample  = null;
+        var hi;
+        for (hi = 0; hi < v2MoveHist.length; hi++) {
+            if (now - v2MoveHist[hi].t <= V2_VEL_WINDOW) {
+                sample = v2MoveHist[hi];
+                break;
             }
-            GAME.onSwipe(dir);
+        }
+        if (sample === null && v2MoveHist.length > 0) sample = v2MoveHist[0];
+
+        if (sample !== null && dist >= v2SwipeMinDist) {
+            var velDt = now - sample.t;
+            if (velDt > 0) {
+                var velDx = pt.x - sample.x;
+                var velDy = pt.y - sample.y;
+                var speed = Math.sqrt(velDx * velDx + velDy * velDy) / velDt;
+                if (speed >= v2SwipeSpeed) isSwipe = true;
+            }
+        }
+
+        if (isSwipe && typeof GAME.onSwipe === "function") {
+            var swipeDir;
+            if (Math.abs(dx) >= Math.abs(dy)) {
+                swipeDir = dx > 0 ? "right" : "left";
+            } else {
+                swipeDir = dy > 0 ? "down" : "up";
+            }
+            GAME.onSwipe(swipeDir);
         }
     } else {
+        /* Clean tap. */
         if (typeof GAME.onClick === "function") GAME.onClick(pt.x, pt.y);
     }
+
+    v2DragMoved = false;
+    v2MoveHist  = [];
+}, { passive: false });
+
+v2Canvas.addEventListener("touchcancel", function (e) {
+    if (!v2GameRunning || !v2DragActive) return;
+    v2DragActive = false;
+    if (v2DragMoved && typeof GAME.onDragEnd === "function") {
+        var t  = e.changedTouches[0];
+        var pt = v2CanvasCoords(t.clientX, t.clientY);
+        GAME.onDragEnd(pt.x, pt.y);
+    }
+    v2DragMoved = false;
+    v2MoveHist  = [];
 }, { passive: false });
 
 /* --------------------------------------------------------------------------
