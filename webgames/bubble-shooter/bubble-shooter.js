@@ -68,6 +68,13 @@ function bshBgmStop() {
     BSH_SND_BGM.currentTime = 0;
 }
 
+// Called on first user gesture — browser allows audio after this point
+function bshEnsureBgm() {
+    if (BSH_bgmStarted || BSH_phase !== "play") return;
+    BSH_bgmStarted = true;
+    bshBgmStart();
+}
+
 // ── game state ────────────────────────────────────────────────────────────────
 var BSH_ctx;
 var BSH_phase;          // "play" | "over"
@@ -95,6 +102,10 @@ var BSH_aimAng;
 
 var BSH_popups;   // [{ x, y, txt, life, maxLife, big, col }]
 var BSH_drops;    // [{ x, y, vx, vy, col, life }]
+var BSH_sparks;   // [{ x, y, vx, vy, col, life, maxLife, sz }]
+var BSH_flash;    // { life, maxLife, col } | null  — big-combo screen flash
+var BSH_pb;       // personal best score (loaded once in init)
+var BSH_bgmStarted;
 
 // ── grid helpers ──────────────────────────────────────────────────────────────
 function bshPar(r)       { return BSH_grid[r].par; }
@@ -129,9 +140,12 @@ function bshRandCol() { return Math.floor(Math.random() * BSH_NUM_COL) + 1; }
 function bshMakeRow(par) {
     // par=0: 8 cols × D44 = 352 = CW−2×MAR  ← perfect fit
     // par=1: 7 cols, offset right by R
+    // ~20% of cells are left empty to create natural gaps and interesting chains
     var cnt   = par === 0 ? 8 : 7;
     var cells = [];
-    for (var c = 0; c < cnt; c++) cells.push(bshRandCol());
+    for (var c = 0; c < cnt; c++) {
+        cells.push(Math.random() < 0.20 ? 0 : bshRandCol());
+    }
     return { par: par, cells: cells };
 }
 
@@ -211,6 +225,10 @@ function bshGameOver(reason) {
     BSH_overReason = reason;
     BSH_flying     = false;
     BSH_aiming     = false;
+    if (BSH_score > BSH_pb) {
+        BSH_pb = BSH_score;
+        SHELL_setPB("bubble-shooter", BSH_pb);
+    }
     bshBgmStop();
     bshSnd(BSH_SND_GAMEOVER);
 }
@@ -461,6 +479,35 @@ function bshCheckMatch(r, c) {
 
     BSH_score += pts;
     bshSnd(BSH_SND_POP);
+
+    // ── juice: spark burst at pop centroid ────────────────────────────────────
+    var sparkCol  = BSH_CFILL[col];
+    var sparkCnt  = Math.min(6 + cnt * 2, 28);
+    for (var sp = 0; sp < sparkCnt; sp++) {
+        var spAng = Math.random() * 6.2832;
+        var spSpd = 60 + Math.random() * 160;
+        BSH_sparks.push({
+            x: pcx, y: pcy,
+            vx: Math.cos(spAng) * spSpd,
+            vy: Math.sin(spAng) * spSpd,
+            col: sparkCol,
+            life: 500 + Math.random() * 300,
+            maxLife: 800,
+            sz: 2 + Math.random() * 3
+        });
+    }
+
+    // ── juice: screen flash on big combos (10+) ───────────────────────────────
+    if (cnt >= 10) {
+        BSH_flash = {
+            life:    cnt >= 20 ? 320 : cnt >= 15 ? 240 : 180,
+            maxLife: cnt >= 20 ? 320 : cnt >= 15 ? 240 : 180,
+            col:     cnt >= 20 ? "255,140,60"
+                   : cnt >= 15 ? "240,210,30"
+                   : "120,220,120"
+        };
+    }
+
     bshCheckScroll();
 }
 
@@ -683,6 +730,32 @@ function bshDrawPopups(ctx) {
     }
 }
 
+function bshDrawSparks(ctx) {
+    for (var i = 0; i < BSH_sparks.length; i++) {
+        var sp    = BSH_sparks[i];
+        var alpha = sp.life / sp.maxLife;
+        ctx.save();
+        ctx.globalAlpha = alpha * 0.9;
+        ctx.fillStyle   = sp.col;
+        ctx.beginPath();
+        ctx.arc(sp.x, sp.y, sp.sz * alpha + 0.5, 0, 6.2832);
+        ctx.fill();
+        ctx.restore();
+    }
+}
+
+function bshDrawFlash(ctx) {
+    if (!BSH_flash) return;
+    var t     = BSH_flash.life / BSH_flash.maxLife;
+    // peak at t=1 (just triggered), fade to 0
+    var alpha = t * 0.28;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle   = "rgb(" + BSH_flash.col + ")";
+    ctx.fillRect(0, BSH_PLAY_TOP, BSH_CW, BSH_PLAY_BOT - BSH_PLAY_TOP);
+    ctx.restore();
+}
+
 function bshDrawGameOver(ctx) {
     ctx.fillStyle = "rgba(8,8,24,0.88)";
     ctx.fillRect(0, 0, BSH_CW, BSH_CH);
@@ -702,7 +775,18 @@ function bshDrawGameOver(ctx) {
     ctx.font      = "bold 52px monospace";
     ctx.fillText(BSH_score, BSH_CW / 2, mid + 26);
 
-    var bx = BSH_CW / 2 - 100, by = mid + 52;
+    // personal best
+    if (BSH_score >= BSH_pb && BSH_pb > 0) {
+        ctx.fillStyle = "#60ff60";
+        ctx.font      = "bold 14px sans-serif";
+        ctx.fillText("NEW BEST! \ud83c\udf1f", BSH_CW / 2, mid + 50);
+    } else if (BSH_pb > 0) {
+        ctx.fillStyle = "#6666aa";
+        ctx.font      = "12px monospace";
+        ctx.fillText("BEST: " + BSH_pb, BSH_CW / 2, mid + 50);
+    }
+
+    var bx = BSH_CW / 2 - 100, by = mid + 68;
     bshRRect(ctx, bx, by, 200, 52, 14);
     ctx.fillStyle   = "#1a5a1a";
     ctx.fill();
@@ -725,9 +809,23 @@ function bshUpdateParticles(dt) {
         d.life -= dt;
         if (d.life <= 0) BSH_drops.splice(i, 1);
     }
-    for (var j = BSH_popups.length - 1; j >= 0; j--) {
-        BSH_popups[j].life -= dt;
-        if (BSH_popups[j].life <= 0) BSH_popups.splice(j, 1);
+    for (var j = BSH_sparks.length - 1; j >= 0; j--) {
+        var sp = BSH_sparks[j];
+        sp.vy  += 180 * s;    // gentle gravity
+        sp.x   += sp.vx * s;
+        sp.y   += sp.vy * s;
+        sp.vx  *= 0.97;       // air drag
+        sp.vy  *= 0.97;
+        sp.life -= dt;
+        if (sp.life <= 0) BSH_sparks.splice(j, 1);
+    }
+    if (BSH_flash) {
+        BSH_flash.life -= dt;
+        if (BSH_flash.life <= 0) BSH_flash = null;
+    }
+    for (var k = BSH_popups.length - 1; k >= 0; k--) {
+        BSH_popups[k].life -= dt;
+        if (BSH_popups[k].life <= 0) BSH_popups.splice(k, 1);
     }
 }
 
@@ -737,6 +835,7 @@ var GAME = {
 
     init: function(canvas) {
         BSH_ctx = canvas.getContext("2d");
+        BSH_pb  = SHELL_getPB("bubble-shooter") || 0;
     },
 
     start: function() {
@@ -749,10 +848,12 @@ var GAME = {
         BSH_aimAng     = 0;
         BSH_popups     = [];
         BSH_drops      = [];
+        BSH_sparks     = [];
+        BSH_flash      = null;
         bshInitGrid();
-        BSH_curCol = bshRandCol();
-        BSH_nxtCol = bshRandCol();
-        bshBgmStart();
+        BSH_curCol     = bshRandCol();
+        BSH_nxtCol     = bshRandCol();
+        BSH_bgmStarted = false;
     },
 
     update: function(dt) {
@@ -770,6 +871,8 @@ var GAME = {
         bshDrawBackground(ctx);
         bshDrawGrid(ctx);
         bshDrawDrops(ctx);
+        bshDrawSparks(ctx);
+        bshDrawFlash(ctx);
         bshDrawFlyingBub(ctx);
         bshDrawAimLine(ctx);
         bshDrawShooter(ctx);
@@ -781,6 +884,7 @@ var GAME = {
 
     onDragStart: function(mx, my) {
         if (BSH_phase !== "play" || BSH_flying) return;
+        bshEnsureBgm();
         BSH_aiming = true;
         BSH_aimAng = bshCalcAng(mx, my);
     },
@@ -800,12 +904,13 @@ var GAME = {
         if (BSH_phase === "over") {
             var mid = BSH_CH / 2;
             if (mx > BSH_CW / 2 - 100 && mx < BSH_CW / 2 + 100
-                    && my > mid + 52 && my < mid + 104) {
+                    && my > mid + 68 && my < mid + 120) {
                 GAME.start();
             }
             return;
         }
         if (BSH_flying) return;
+        bshEnsureBgm();
         BSH_aimAng = bshCalcAng(mx, my);
         bshLaunch();
     }
