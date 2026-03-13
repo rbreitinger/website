@@ -39,6 +39,8 @@ var BSH_SCROLL_DUR = 300;
 
 // ── palette ───────────────────────────────────────────────────────────────────
 var BSH_NUM_COL = 5;
+// Timer bubbles share the same 5 colours — stored as col+10 (11-15) in the grid.
+// bshColOf(v) strips the timer offset; bshIsTimer(v) detects it.
 var BSH_CFILL   = ["", "#e03040", "#2a9de0", "#3cbc50", "#f0b820", "#b040d0"];
 var BSH_CDARK   = ["", "#901828", "#105898", "#1a6030", "#8a5800", "#600878"];
 
@@ -106,6 +108,8 @@ var BSH_sparks;   // [{ x, y, vx, vy, col, life, maxLife, sz }]
 var BSH_flash;    // { life, maxLife, col } | null  — big-combo screen flash
 var BSH_pb;       // personal best score (loaded once in init)
 var BSH_bgmStarted;
+var BSH_streak;   // consecutive successful pops without a miss
+var BSH_streakMult; // current score multiplier from streak
 
 // ── grid helpers ──────────────────────────────────────────────────────────────
 function bshPar(r)       { return BSH_grid[r].par; }
@@ -124,6 +128,10 @@ function bshInBounds(r, c) {
     return r >= 0 && r < BSH_grid.length && c >= 0 && c < bshLen(r);
 }
 
+// Timer bubble encoding: normal col 1-5, timer col 11-15 (= col+10)
+function bshColOf(v)   { return v > 10 ? v - 10 : v; }
+function bshIsTimer(v) { return v > 10; }
+
 function bshNeighbors(r, c) {
     var n = [[r, c - 1], [r, c + 1]];
     if (bshPar(r) === 0) {
@@ -135,16 +143,35 @@ function bshNeighbors(r, c) {
 }
 
 // ── grid init ─────────────────────────────────────────────────────────────────
-function bshRandCol() { return Math.floor(Math.random() * BSH_NUM_COL) + 1; }
+// Returns a random colour 1-5, biased 75% toward colours present in the grid
+function bshRandCol() {
+    var present = [];
+    for (var r = 0; r < BSH_grid.length; r++) {
+        for (var c = 0; c < bshLen(r); c++) {
+            var v = bshGet(r, c);
+            if (v >= 1 && v <= BSH_NUM_COL && present.indexOf(v) < 0)
+                present.push(v);
+        }
+    }
+    if (present.length > 0 && Math.random() < 0.75)
+        return present[Math.floor(Math.random() * present.length)];
+    return Math.floor(Math.random() * BSH_NUM_COL) + 1;
+}
+
+// Plain random col — used during grid generation before BSH_grid exists
+function bshRandColPlain() { return Math.floor(Math.random() * BSH_NUM_COL) + 1; }
 
 function bshMakeRow(par) {
     // par=0: 8 cols × D44 = 352 = CW−2×MAR  ← perfect fit
     // par=1: 7 cols, offset right by R
-    // ~20% of cells are left empty to create natural gaps and interesting chains
+    // ~20% hole, ~7% timer bubble (stored as col+10), rest normal
     var cnt   = par === 0 ? 8 : 7;
     var cells = [];
     for (var c = 0; c < cnt; c++) {
-        cells.push(Math.random() < 0.20 ? 0 : bshRandCol());
+        var rnd = Math.random();
+        if      (rnd < 0.20) cells.push(0);
+        else if (rnd < 0.27) cells.push(bshRandColPlain() + 10);  // timer
+        else                 cells.push(bshRandColPlain());
     }
     return { par: par, cells: cells };
 }
@@ -353,7 +380,10 @@ function bshMoveBub(dt) {
             if (bshGet(r, c) === 0) continue;
             var cx = bshCX(r, c);
             var ex = cx - BSH_fx, ey = cy - BSH_fy;
-            if (ex * ex + ey * ey < BSH_COL_DIST * BSH_COL_DIST) { bshSnapNearest(); return; }
+            if (ex * ex + ey * ey < BSH_COL_DIST * BSH_COL_DIST) {
+                bshSnapNearest();
+                return;
+            }
         }
     }
 
@@ -384,21 +414,52 @@ function bshSnapNearest() {
     else BSH_flying = false;
 }
 
+// ── timer bonus ───────────────────────────────────────────────────────────────
+function bshTimerBonus(secs, px, py) {
+    BSH_timeMs = Math.min(BSH_timeMs + secs * 1000, BSH_GAME_SECS * 1000);
+    BSH_popups.push({
+        x: px, y: py,
+        txt: "+" + secs + "s \u23f1",
+        life: 1400, maxLife: 1400,
+        big: true, col: "#ffe060"
+    });
+    // Gold sparks
+    for (var sp = 0; sp < 18; sp++) {
+        var spAng = Math.random() * 6.2832;
+        var spSpd = 80 + Math.random() * 140;
+        BSH_sparks.push({
+            x: px, y: py,
+            vx: Math.cos(spAng) * spSpd, vy: Math.sin(spAng) * spSpd,
+            col: "#ffe060",
+            life: 600 + Math.random() * 300, maxLife: 900,
+            sz: 2.5 + Math.random() * 3
+        });
+    }
+}
+
 function bshSettle(r, c) {
     bshSet(r, c, BSH_fcolor);
     BSH_flying = false;
+    var prevStreak = BSH_streak;
     bshCheckMatch(r, c);
+    // If streak didn't increase, this shot missed — reset it
+    if (BSH_streak === prevStreak) {
+        BSH_streak     = 0;
+        BSH_streakMult = 1.0;
+    }
     if (BSH_phase !== "over") bshCheckFloor();
 }
 
 // ── match & clear ─────────────────────────────────────────────────────────────
 function bshFloodColor(startR, startC, col) {
+    // col is the decoded colour (1-5); matches both normal and timer variants
     var visited = {}, queue = [[startR, startC]], found = [];
     while (queue.length > 0) {
         var item = queue.pop();
         var r = item[0], c = item[1];
         var key = r + "," + c;
-        if (visited[key] || !bshInBounds(r, c) || bshGet(r, c) !== col) continue;
+        if (visited[key] || !bshInBounds(r, c)) continue;
+        if (bshColOf(bshGet(r, c)) !== col)      continue;
         visited[key] = true;
         found.push(item);
         var nbrs = bshNeighbors(r, c);
@@ -425,15 +486,27 @@ function bshFloodConnected() {
 }
 
 function bshCheckMatch(r, c) {
-    var col   = bshGet(r, c);
+    var col   = bshColOf(bshGet(r, c));   // decoded colour (1-5)
     var group = bshFloodColor(r, c, col);
     if (group.length < 3) { bshCheckScroll(); return; }
 
+    // Count timer bubbles before clearing
+    var timerInGroup = 0;
+    for (var i = 0; i < group.length; i++) {
+        if (bshIsTimer(bshGet(group[i][0], group[i][1]))) timerInGroup++;
+    }
     for (var i = 0; i < group.length; i++) bshSet(group[i][0], group[i][1], 0);
+
+    // ── streak ────────────────────────────────────────────────────────────────
+    BSH_streak++;
+    BSH_streakMult = BSH_streak >= 8 ? 3.0
+                   : BSH_streak >= 5 ? 2.0
+                   : BSH_streak >= 3 ? 1.5
+                   : 1.0;
 
     var cnt  = group.length;
     var mult = cnt >= 20 ? 10 : cnt >= 15 ? 5 : cnt >= 10 ? 3 : cnt >= 6 ? 2 : 1;
-    var pts  = cnt * 10 * mult;
+    var pts  = Math.round(cnt * 10 * mult * BSH_streakMult);
 
     var sumX = 0, sumY = 0;
     for (var i = 0; i < group.length; i++) {
@@ -447,10 +520,16 @@ function bshCheckMatch(r, c) {
              : cnt >= 15 ? "GREAT! \u00d7" + cnt
              : cnt >= 10 ? "NICE! \u00d7" + cnt
              : "\u00d7" + cnt;
+    if (BSH_streakMult > 1.0)
+        lbl += "  \ud83d\udd25" + BSH_streakMult + "x";
     var pcol = cnt >= 20 ? "#ff8040" : cnt >= 15 ? "#f0d020"
              : cnt >= 10 ? "#80e080" : "#ffffff";
     BSH_popups.push({ x: pcx, y: pcy, txt: lbl,
                       life: 1200, maxLife: 1200, big: cnt >= 10, col: pcol });
+
+    // Time bonus for timer bubbles popped directly in the matched group
+    if (timerInGroup > 0)
+        bshTimerBonus(timerInGroup * 5, pcx, pcy - 20);
 
     var connected = bshFloodConnected();
     var orphans   = [];
@@ -460,39 +539,45 @@ function bshCheckMatch(r, c) {
                 orphans.push([ro, co]);
         }
     }
+    var timerOrphans = 0;
     for (var j = 0; j < orphans.length; j++) {
         var or2 = orphans[j][0], oc = orphans[j][1];
+        var orcol = bshGet(or2, oc);
+        if (bshIsTimer(orcol)) timerOrphans++;
         BSH_drops.push({
             x: bshCX(or2, oc), y: bshCY(or2),
             vx: (Math.random() - 0.5) * 100, vy: -40 - Math.random() * 80,
-            col: bshGet(or2, oc), life: 900
+            col: BSH_CFILL[bshColOf(orcol)],
+            life: 900
         });
         bshSet(or2, oc, 0);
     }
-    if (orphans.length > 0) {
-        pts += orphans.length * 5;
+    var normalOrphans = orphans.length - timerOrphans;
+    if (normalOrphans > 0) {
+        pts += normalOrphans * 5;
         BSH_popups.push({ x: pcx + 18, y: pcy + 22,
-                          txt: "+" + (orphans.length * 5) + " drop",
+                          txt: "+" + (normalOrphans * 5) + " drop",
                           life: 900, maxLife: 900, big: false, col: "#aaffaa" });
         bshSnd(BSH_SND_DROP);
+    }
+    if (timerOrphans > 0) {
+        bshTimerBonus(timerOrphans * 1, pcx - 18, pcy + 22);
     }
 
     BSH_score += pts;
     bshSnd(BSH_SND_POP);
 
-    // ── juice: spark burst at pop centroid ────────────────────────────────────
-    var sparkCol  = BSH_CFILL[col];
-    var sparkCnt  = Math.min(6 + cnt * 2, 28);
+    // ── juice: spark burst ────────────────────────────────────────────────────
+    var sparkCol = BSH_CFILL[col];
+    var sparkCnt = Math.min(6 + cnt * 2, 28);
     for (var sp = 0; sp < sparkCnt; sp++) {
         var spAng = Math.random() * 6.2832;
         var spSpd = 60 + Math.random() * 160;
         BSH_sparks.push({
             x: pcx, y: pcy,
-            vx: Math.cos(spAng) * spSpd,
-            vy: Math.sin(spAng) * spSpd,
+            vx: Math.cos(spAng) * spSpd, vy: Math.sin(spAng) * spSpd,
             col: sparkCol,
-            life: 500 + Math.random() * 300,
-            maxLife: 800,
+            life: 500 + Math.random() * 300, maxLife: 800,
             sz: 2 + Math.random() * 3
         });
     }
@@ -503,8 +588,7 @@ function bshCheckMatch(r, c) {
             life:    cnt >= 20 ? 320 : cnt >= 15 ? 240 : 180,
             maxLife: cnt >= 20 ? 320 : cnt >= 15 ? 240 : 180,
             col:     cnt >= 20 ? "255,140,60"
-                   : cnt >= 15 ? "240,210,30"
-                   : "120,220,120"
+                   : cnt >= 15 ? "240,210,30" : "120,220,120"
         };
     }
 
@@ -527,6 +611,8 @@ function bshRRect(ctx, x, y, w, h, rad) {
 }
 
 function bshDrawBub(ctx, x, y, col, alpha) {
+    var drawCol = bshColOf(col);   // strips timer offset if present
+    var isTimer = bshIsTimer(col);
     ctx.save();
     if (alpha !== undefined) ctx.globalAlpha = alpha;
     ctx.shadowColor   = "rgba(0,0,0,0.4)";
@@ -534,12 +620,13 @@ function bshDrawBub(ctx, x, y, col, alpha) {
     ctx.shadowOffsetY = 2;
     ctx.beginPath();
     ctx.arc(x, y, BSH_R - 1, 0, 6.2832);
-    ctx.fillStyle = BSH_CFILL[col];
+    ctx.fillStyle = BSH_CFILL[drawCol];
     ctx.fill();
-    ctx.lineWidth   = 1.5;
-    ctx.strokeStyle = BSH_CDARK[col];
+    ctx.lineWidth   = isTimer ? 2.5 : 1.5;
+    ctx.strokeStyle = isTimer ? "#ffffff" : BSH_CDARK[drawCol];
     ctx.stroke();
     ctx.shadowColor = "transparent"; ctx.shadowBlur = 0;
+    // Highlight
     var gr = ctx.createRadialGradient(x - 5, y - 6, 1, x - 2, y - 3, BSH_R * 0.8);
     gr.addColorStop(0, "rgba(255,255,255,0.72)");
     gr.addColorStop(1, "rgba(255,255,255,0)");
@@ -547,6 +634,15 @@ function bshDrawBub(ctx, x, y, col, alpha) {
     ctx.arc(x, y, BSH_R - 1, 0, 6.2832);
     ctx.fillStyle = gr;
     ctx.fill();
+    // Timer glyph — white + on top of the bubble colour
+    if (isTimer) {
+        ctx.fillStyle    = "#ffffff";
+        ctx.font         = "bold " + Math.round(BSH_R * 0.95) + "px sans-serif";
+        ctx.textAlign    = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("+", x, y + 1);
+        ctx.textBaseline = "alphabetic";
+    }
     ctx.restore();
 }
 
@@ -612,8 +708,26 @@ function bshDrawGrid(ctx) {
 
 function bshDrawDrops(ctx) {
     for (var i = 0; i < BSH_drops.length; i++) {
-        var d = BSH_drops[i];
-        bshDrawBub(ctx, d.x, d.y, d.col, (d.life / 900) * 0.85);
+        var d     = BSH_drops[i];
+        var alpha = (d.life / 900) * 0.85;
+        // drops store a css colour string in d.col (set at creation time)
+        ctx.save();
+        ctx.globalAlpha   = alpha;
+        ctx.shadowColor   = "rgba(0,0,0,0.3)";
+        ctx.shadowBlur    = 3;
+        ctx.beginPath();
+        ctx.arc(d.x, d.y, BSH_R - 1, 0, 6.2832);
+        ctx.fillStyle = d.col;
+        ctx.fill();
+        ctx.shadowColor = "transparent"; ctx.shadowBlur = 0;
+        var gr = ctx.createRadialGradient(d.x - 4, d.y - 5, 1, d.x - 2, d.y - 2, BSH_R * 0.8);
+        gr.addColorStop(0, "rgba(255,255,255,0.6)");
+        gr.addColorStop(1, "rgba(255,255,255,0)");
+        ctx.beginPath();
+        ctx.arc(d.x, d.y, BSH_R - 1, 0, 6.2832);
+        ctx.fillStyle = gr;
+        ctx.fill();
+        ctx.restore();
     }
 }
 
@@ -709,6 +823,15 @@ function bshDrawHUD(ctx) {
     ctx.fillStyle = sec <= 10 ? "#ff4444" : sec <= 30 ? "#f0b820" : "#ffffff";
     ctx.font      = "bold 22px monospace";
     ctx.fillText(ts, BSH_CW - 14, 38);
+
+    // Streak indicator — centre of HUD, only shown at streak ≥ 3
+    if (BSH_streak >= 3) {
+        ctx.textAlign = "center";
+        ctx.fillStyle = BSH_streakMult >= 3.0 ? "#ff8040"
+                      : BSH_streakMult >= 2.0 ? "#f0d020" : "#80e0ff";
+        ctx.font      = "bold 13px sans-serif";
+        ctx.fillText("\ud83d\udd25 " + BSH_streak + " STREAK  \u00d7" + BSH_streakMult, BSH_CW / 2, 34);
+    }
 }
 
 function bshDrawPopups(ctx) {
@@ -850,6 +973,8 @@ var GAME = {
         BSH_drops      = [];
         BSH_sparks     = [];
         BSH_flash      = null;
+        BSH_streak     = 0;
+        BSH_streakMult = 1.0;
         bshInitGrid();
         BSH_curCol     = bshRandCol();
         BSH_nxtCol     = bshRandCol();
