@@ -50,6 +50,12 @@ var BSH_SND_SHOOT    = new Audio("bubble-shooter/shoot.ogg");
 var BSH_SND_POP      = new Audio("bubble-shooter/pop.ogg");
 var BSH_SND_DROP     = new Audio("bubble-shooter/drop.ogg");
 var BSH_SND_GAMEOVER = new Audio("bubble-shooter/gameover.ogg");
+var BSH_SND_TIMER    = new Audio("bubble-shooter/timer.ogg");
+
+var BSH_BG_IMG       = new Image();
+var BSH_BG_READY     = false;
+BSH_BG_IMG.onload    = function() { BSH_BG_READY = true; };
+BSH_BG_IMG.src       = "bubble-shooter/background.png";
 
 BSH_SND_BGM.loop = true;
 
@@ -70,10 +76,11 @@ function bshBgmStop() {
     BSH_SND_BGM.currentTime = 0;
 }
 
-// Called on first user gesture — browser allows audio after this point
+// Called on every user gesture — retries until BGM is actually playing.
+// Checking .paused is more reliable than a flag: if the browser silently
+// blocked the first attempt, the next tap will try again automatically.
 function bshEnsureBgm() {
-    if (BSH_bgmStarted || BSH_phase !== "play") return;
-    BSH_bgmStarted = true;
+    if (BSH_phase !== "play" || !BSH_SND_BGM.paused) return;
     bshBgmStart();
 }
 
@@ -107,9 +114,11 @@ var BSH_drops;    // [{ x, y, vx, vy, col, life }]
 var BSH_sparks;   // [{ x, y, vx, vy, col, life, maxLife, sz }]
 var BSH_flash;    // { life, maxLife, col } | null  — big-combo screen flash
 var BSH_pb;       // personal best score (loaded once in init)
-var BSH_bgmStarted;
-var BSH_streak;   // consecutive successful pops without a miss
-var BSH_streakMult; // current score multiplier from streak
+var BSH_streak;       // consecutive successful pops without a miss
+var BSH_streakMult;   // current score multiplier from streak
+var BSH_overLockMs;      // ms since game over — button locked for first 1000ms
+var BSH_timerAlertFired; // true once the 30s alert sound has played
+var BSH_timerLastSec;    // last integer second value — used for per-second tick below 10s
 
 // ── grid helpers ──────────────────────────────────────────────────────────────
 function bshPar(r)       { return BSH_grid[r].par; }
@@ -417,6 +426,9 @@ function bshSnapNearest() {
 // ── timer bonus ───────────────────────────────────────────────────────────────
 function bshTimerBonus(secs, px, py) {
     BSH_timeMs = Math.min(BSH_timeMs + secs * 1000, BSH_GAME_SECS * 1000);
+    // Reset the per-second tick tracker so ticks fire correctly as time
+    // counts back down — without this the ticks stay silent after a bonus
+    BSH_timerLastSec = Math.ceil(BSH_timeMs / 1000);
     BSH_popups.push({
         x: px, y: py,
         txt: "+" + secs + "s \u23f1",
@@ -648,20 +660,22 @@ function bshDrawBub(ctx, x, y, col, alpha) {
 
 // ── draw sections ─────────────────────────────────────────────────────────────
 function bshDrawBackground(ctx) {
-    ctx.fillStyle = "#0e0e20";
-    ctx.fillRect(0, 0, BSH_CW, BSH_CH);
+    // Background image (360×596) — plain colour fallback until loaded
+    if (BSH_BG_READY) {
+        ctx.drawImage(BSH_BG_IMG, 0, 0, BSH_CW, BSH_CH);
+    } else {
+        ctx.fillStyle = "#0e0e20";
+        ctx.fillRect(0, 0, BSH_CW, BSH_CH);
+        ctx.fillStyle = "#131326";
+        ctx.fillRect(BSH_MAR, BSH_PLAY_TOP,
+                     BSH_CW - BSH_MAR * 2, BSH_PLAY_BOT - BSH_PLAY_TOP);
+        ctx.fillStyle = "#1e1e40";
+        ctx.fillRect(0, BSH_PLAY_TOP, BSH_MAR, BSH_PLAY_BOT - BSH_PLAY_TOP);
+        ctx.fillRect(BSH_CW - BSH_MAR, BSH_PLAY_TOP, BSH_MAR, BSH_PLAY_BOT - BSH_PLAY_TOP);
+    }
 
-    ctx.fillStyle = "#131326";
-    ctx.fillRect(BSH_MAR, BSH_PLAY_TOP,
-                 BSH_CW - BSH_MAR * 2, BSH_PLAY_BOT - BSH_PLAY_TOP);
-
-    // Side gutters
-    ctx.fillStyle = "#1e1e40";
-    ctx.fillRect(0, BSH_PLAY_TOP, BSH_MAR, BSH_PLAY_BOT - BSH_PLAY_TOP);
-    ctx.fillRect(BSH_CW - BSH_MAR, BSH_PLAY_TOP, BSH_MAR, BSH_PLAY_BOT - BSH_PLAY_TOP);
-
-    // Ceiling
-    ctx.fillStyle = "#3a3a6a";
+    // Ceiling bar
+    ctx.fillStyle = "rgba(58,58,106,0.85)";
     ctx.fillRect(0, BSH_PLAY_TOP, BSH_CW, 3);
 
     // Floor line (danger — red dashed)
@@ -676,7 +690,7 @@ function bshDrawBackground(ctx) {
     ctx.setLineDash([]);
     ctx.restore();
 
-    // Scroll threshold line (subtle blue-purple hint)
+    // Scroll threshold line (subtle hint)
     ctx.save();
     ctx.setLineDash([4, 10]);
     ctx.lineWidth   = 1;
@@ -805,6 +819,7 @@ function bshDrawHUD(ctx) {
     ctx.fillStyle = "#2a2a55";
     ctx.fillRect(0, BSH_HUD_H - 1, BSH_CW, 1);
 
+    // Left — current score
     ctx.textAlign = "left";
     ctx.fillStyle = "#7777aa";
     ctx.font      = "11px monospace";
@@ -813,6 +828,18 @@ function bshDrawHUD(ctx) {
     ctx.font      = "bold 22px monospace";
     ctx.fillText(BSH_score, 14, 38);
 
+    // Centre — personal best (same style as score/time)
+    if (BSH_pb > 0) {
+        ctx.textAlign = "center";
+        ctx.fillStyle = "#7777aa";
+        ctx.font      = "11px monospace";
+        ctx.fillText("BEST", BSH_CW / 2, 16);
+        ctx.fillStyle = BSH_score >= BSH_pb ? "#60ff60" : "#aaaacc";
+        ctx.font      = "bold 22px monospace";
+        ctx.fillText(BSH_pb, BSH_CW / 2, 38);
+    }
+
+    // Right — timer
     var sec = Math.ceil(BSH_timeMs / 1000);
     if (sec < 0) sec = 0;
     var ts = Math.floor(sec / 60) + ":" + (sec % 60 < 10 ? "0" : "") + (sec % 60);
@@ -823,15 +850,24 @@ function bshDrawHUD(ctx) {
     ctx.fillStyle = sec <= 10 ? "#ff4444" : sec <= 30 ? "#f0b820" : "#ffffff";
     ctx.font      = "bold 22px monospace";
     ctx.fillText(ts, BSH_CW - 14, 38);
+}
 
-    // Streak indicator — centre of HUD, only shown at streak ≥ 3
-    if (BSH_streak >= 3) {
-        ctx.textAlign = "center";
-        ctx.fillStyle = BSH_streakMult >= 3.0 ? "#ff8040"
-                      : BSH_streakMult >= 2.0 ? "#f0d020" : "#80e0ff";
-        ctx.font      = "bold 13px sans-serif";
-        ctx.fillText("\ud83d\udd25 " + BSH_streak + " STREAK  \u00d7" + BSH_streakMult, BSH_CW / 2, 34);
-    }
+// Streak indicator drawn over the playfield — centred X, sits at ~1/3 from play top
+function bshDrawStreak(ctx) {
+    if (BSH_streak < 3) return;
+    var sx = BSH_CW / 2;
+    var sy = BSH_PLAY_TOP + Math.round((BSH_PLAY_BOT - BSH_PLAY_TOP) / 3);
+    ctx.save();
+    ctx.textAlign   = "center";
+    ctx.font        = "bold 15px sans-serif";
+    ctx.fillStyle   = BSH_streakMult >= 3.0 ? "#ff8040"
+                    : BSH_streakMult >= 2.0 ? "#f0d020" : "#80e0ff";
+    ctx.lineWidth   = 3;
+    ctx.strokeStyle = "rgba(0,0,0,0.7)";
+    var txt = "\ud83d\udd25 " + BSH_streak + " STREAK  \u00d7" + BSH_streakMult;
+    ctx.strokeText(txt, sx, sy);
+    ctx.fillText(txt, sx, sy);
+    ctx.restore();
 }
 
 function bshDrawPopups(ctx) {
@@ -910,15 +946,16 @@ function bshDrawGameOver(ctx) {
     }
 
     var bx = BSH_CW / 2 - 100, by = mid + 68;
+    var locked = BSH_overLockMs < 1000;
     bshRRect(ctx, bx, by, 200, 52, 14);
-    ctx.fillStyle   = "#1a5a1a";
+    ctx.fillStyle   = locked ? "#222222" : "#1a5a1a";
     ctx.fill();
-    ctx.strokeStyle = "#50c050";
+    ctx.strokeStyle = locked ? "#555555" : "#50c050";
     ctx.lineWidth   = 2;
     ctx.stroke();
-    ctx.fillStyle = "#ffffff";
+    ctx.fillStyle = locked ? "#666666" : "#ffffff";
     ctx.font      = "bold 20px sans-serif";
-    ctx.fillText("PLAY AGAIN", BSH_CW / 2, by + 32);
+    ctx.fillText(locked ? "WAIT..." : "PLAY AGAIN", BSH_CW / 2, by + 32);
 }
 
 // ── particle update ───────────────────────────────────────────────────────────
@@ -973,18 +1010,36 @@ var GAME = {
         BSH_drops      = [];
         BSH_sparks     = [];
         BSH_flash      = null;
-        BSH_streak     = 0;
-        BSH_streakMult = 1.0;
+        BSH_streak          = 0;
+        BSH_streakMult      = 1.0;
+        BSH_overLockMs      = 0;
+        BSH_timerAlertFired = false;
+        BSH_timerLastSec    = BSH_GAME_SECS;
         bshInitGrid();
         BSH_curCol     = bshRandCol();
         BSH_nxtCol     = bshRandCol();
-        BSH_bgmStarted = false;
     },
 
     update: function(dt) {
-        if (BSH_phase === "over") return;
+        if (BSH_phase === "over") {
+            BSH_overLockMs += dt;
+            return;
+        }
         BSH_timeMs -= dt;
         if (BSH_timeMs <= 0) { BSH_timeMs = 0; bshGameOver("time"); return; }
+        // Fire the 30s alert once
+        if (!BSH_timerAlertFired && BSH_timeMs <= 30000) {
+            BSH_timerAlertFired = true;
+            bshSnd(BSH_SND_TIMER);
+        }
+        // Fire timer.ogg every second once below 10s
+        if (BSH_timeMs <= 10000) {
+            var curSec = Math.ceil(BSH_timeMs / 1000);
+            if (curSec < BSH_timerLastSec) {
+                BSH_timerLastSec = curSec;
+                bshSnd(BSH_SND_TIMER);
+            }
+        }
         bshUpdateScroll(dt);
         bshMoveBub(dt);
         bshUpdateParticles(dt);
@@ -996,6 +1051,7 @@ var GAME = {
         bshDrawBackground(ctx);
         bshDrawGrid(ctx);
         bshDrawDrops(ctx);
+        bshDrawStreak(ctx);
         bshDrawSparks(ctx);
         bshDrawFlash(ctx);
         bshDrawFlyingBub(ctx);
@@ -1027,10 +1083,12 @@ var GAME = {
 
     onClick: function(mx, my) {
         if (BSH_phase === "over") {
+            if (BSH_overLockMs < 1000) return;   // button locked for first second
             var mid = BSH_CH / 2;
             if (mx > BSH_CW / 2 - 100 && mx < BSH_CW / 2 + 100
                     && my > mid + 68 && my < mid + 120) {
                 GAME.start();
+                bshEnsureBgm();   // still inside user gesture — BGM allowed immediately
             }
             return;
         }
