@@ -241,7 +241,8 @@
    Canvas: 360 × 596 (logical, never changes).
    Title bar: 44 px (HTML, outside canvas — game draws from 0,0 freely).
    Total wrapper logical area: 360 × 640.
-   Touch-only input. No mouse events.
+   Input: touch + mouse (identical gesture sequences, separate state).
+   No keyboard — would trigger virtual keyboard on mobile.
 
    Reset controls are the game's responsibility — drawn on the canvas,
    handled in onClick. The shell title bar contains only Back / Sound /
@@ -451,7 +452,11 @@ function phnLoop(timestamp) {
 }
 
 /* --------------------------------------------------------------------------
-   INPUT — touch only, no mouse.
+   INPUT — touch + mouse.
+
+   Mouse uses a separate phnMouseDown flag so touch and mouse state never
+   interfere. The gesture sequences and coordinate scaling are identical.
+   No keyboard listeners — would trigger virtual keyboard on mobile.
 
    Gesture classification — overview
    ───────────────────────────────────────────────────────────────────────────
@@ -491,6 +496,10 @@ var phnDragActive   = false;
 var phnDragMoved    = false;
 var phnTouchStartX  = 0;
 var phnTouchStartY  = 0;
+var phnMouseDown    = false;    /* separate flag — mouse state never touches phnDragActive */
+var phnMouseMoved   = false;
+var phnMouseStartX  = 0;
+var phnMouseStartY  = 0;
 var phnJitterThresh = 6;        /* px logical                                 */
 var phnSwipeSpeed   = 0.5;      /* px/ms — above this = swipe                 */
 var phnSwipeMinDist = 20;       /* px logical — minimum displacement for swipe*/
@@ -609,6 +618,56 @@ phnCanvas.addEventListener("touchcancel", function (e) {
     phnDragMoved = false;
     phnMoveHist  = [];
 }, { passive: false });
+
+/* --------------------------------------------------------------------------
+   MOUSE INPUT
+   Mirrors the touch path exactly. Uses phnMouseDown / phnMouseMoved so
+   mouse state is fully independent from phnDragActive (touch).
+   No jitter gate on mouse — cursor position is already precise.
+   -------------------------------------------------------------------------- */
+
+phnCanvas.addEventListener("mousedown", function (e) {
+    if (!phnGameRunning) return;
+    var pt = phnCanvasCoords(e.clientX, e.clientY);
+    phnMouseDown   = true;
+    phnMouseMoved  = false;
+    phnMouseStartX = pt.x;
+    phnMouseStartY = pt.y;
+    if (typeof GAME.onDragStart === "function") GAME.onDragStart(pt.x, pt.y);
+});
+
+phnCanvas.addEventListener("mousemove", function (e) {
+    if (!phnGameRunning || !phnMouseDown) return;
+    var pt  = phnCanvasCoords(e.clientX, e.clientY);
+    var ddx = pt.x - phnMouseStartX;
+    var ddy = pt.y - phnMouseStartY;
+    if (!phnMouseMoved && Math.sqrt(ddx * ddx + ddy * ddy) < phnJitterThresh) return;
+    phnMouseMoved = true;
+    if (typeof GAME.onDrag === "function") GAME.onDrag(pt.x, pt.y);
+});
+
+phnCanvas.addEventListener("mouseup", function (e) {
+    if (!phnGameRunning || !phnMouseDown) return;
+    phnMouseDown = false;
+    var pt = phnCanvasCoords(e.clientX, e.clientY);
+    if (phnMouseMoved) {
+        if (typeof GAME.onDragEnd === "function") GAME.onDragEnd(pt.x, pt.y);
+    } else {
+        if (typeof GAME.onClick === "function") GAME.onClick(pt.x, pt.y);
+    }
+    phnMouseMoved = false;
+});
+
+/* Cancel mouse drag if pointer leaves the canvas. */
+phnCanvas.addEventListener("mouseleave", function (e) {
+    if (!phnGameRunning || !phnMouseDown) return;
+    phnMouseDown = false;
+    if (phnMouseMoved && typeof GAME.onDragEnd === "function") {
+        var pt = phnCanvasCoords(e.clientX, e.clientY);
+        GAME.onDragEnd(pt.x, pt.y);
+    }
+    phnMouseMoved = false;
+});
 
 /* --------------------------------------------------------------------------
    GAME LOADING
