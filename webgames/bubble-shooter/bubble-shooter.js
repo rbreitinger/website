@@ -355,7 +355,7 @@ function bshLaunch() {
     if (BSH_flying) return;
     BSH_flying = true;
     BSH_fx     = bshTipX();
-    BSH_fy     = bshTipY();
+    BSH_fy     = Math.min(bshTipY(), BSH_PLAY_BOT - BSH_R - 2);
     BSH_fcolor = BSH_curCol;
     BSH_fvx    = Math.sin(BSH_aimAng) * BSH_BUB_SPD;
     BSH_fvy    = -Math.cos(BSH_aimAng) * BSH_BUB_SPD;
