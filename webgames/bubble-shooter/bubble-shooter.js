@@ -355,7 +355,7 @@ function bshLaunch() {
     if (BSH_flying) return;
     BSH_flying = true;
     BSH_fx     = bshTipX();
-    BSH_fy     = Math.min(bshTipY(), BSH_PLAY_BOT - BSH_R - 2);
+    BSH_fy     = bshTipY();
     BSH_fcolor = BSH_curCol;
     BSH_fvx    = Math.sin(BSH_aimAng) * BSH_BUB_SPD;
     BSH_fvy    = -Math.cos(BSH_aimAng) * BSH_BUB_SPD;
@@ -375,8 +375,10 @@ function bshMoveBub(dt) {
     if (BSH_fx < wallL) { BSH_fx = wallL + (wallL - BSH_fx); BSH_fvx = -BSH_fvx; }
     if (BSH_fx > wallR) { BSH_fx = wallR - (BSH_fx - wallR); BSH_fvx = -BSH_fvx; }
 
-    // Bubble fell below the floor without hitting anything — discard silently
-    if (BSH_fy > BSH_PLAY_BOT + BSH_R) {
+    // Discard only if below the floor AND drifting further down — a bubble
+    // launched at a steep angle may start just below PLAY_BOT but is moving
+    // upward and will enter the play field on the next frame.
+    if (BSH_fy > BSH_PLAY_BOT + BSH_R && BSH_fvy > 0) {
         BSH_flying = false;
         bshCheckScroll();
         return;
