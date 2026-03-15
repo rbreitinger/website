@@ -146,6 +146,11 @@
             color: #c0392b;
         }
 
+        /* background-disabled state indicator */
+        #v2-btn-bg.v2-bg-off {
+            color: #c0392b;
+        }
+
         /* ------------------------------------------------------------------ */
         /*  CANVAS  (960 × 640 — logical game resolution, never changes)       */
         /* ------------------------------------------------------------------ */
@@ -202,6 +207,25 @@
         <div id="v2-title">Yorokobi Games</div>
 
         <div id="v2-right">
+
+            <!-- Toggle background -->
+            <button id="v2-btn-bg" class="v2-tbtn" title="Toggle background">
+                <svg id="v2-icon-bg-on" viewBox="0 0 20 20" fill="none"
+                     stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="2" y="4" width="16" height="12" rx="1.5"/>
+                    <circle cx="7" cy="8.5" r="1.5"/>
+                    <path d="M2 14 L6.5 10 L10 12.5 L13.5 9.5 L18 13"/>
+                </svg>
+                <svg id="v2-icon-bg-off" viewBox="0 0 20 20" fill="none"
+                     stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round"
+                     style="display:none">
+                    <rect x="2" y="4" width="16" height="12" rx="1.5"/>
+                    <line x1="7" y1="8" x2="13" y2="14"/>
+                    <line x1="13" y1="8" x2="7" y2="14"/>
+                </svg>
+            </button>
 
             <!-- Toggle sound -->
             <button id="v2-btn-sound" class="v2-tbtn" title="Toggle sound">
@@ -291,6 +315,9 @@ var v2IconSoundOn   = document.getElementById("v2-icon-sound-on");
 var v2IconSoundOff  = document.getElementById("v2-icon-sound-off");
 var v2IconFsEnter   = document.getElementById("v2-icon-fs-enter");
 var v2IconFsExit    = document.getElementById("v2-icon-fs-exit");
+var v2BtnBg         = document.getElementById("v2-btn-bg");
+var v2IconBgOn      = document.getElementById("v2-icon-bg-on");
+var v2IconBgOff     = document.getElementById("v2-icon-bg-off");
 
 var v2Ctx = v2Canvas.getContext("2d");
 
@@ -299,6 +326,7 @@ var v2Ctx = v2Canvas.getContext("2d");
    -------------------------------------------------------------------------- */
 
 var v2Muted         = false;
+var v2BgEnabled     = true;
 var v2GameRunning   = false;
 var v2LastTime      = 0;
 var v2Accumulator   = 0;
@@ -314,6 +342,11 @@ var v2BackUrl       = "index.html#games";   /* set to absolute URL in loadGame, 
 /* Returns true when the player has muted sound. */
 function SHELL_isMuted() {
     return v2Muted;
+}
+
+/* Returns true when the background image should be drawn. */
+function SHELL_isBgEnabled() {
+    return v2BgEnabled;
 }
 
 /* Personal best storage — same API as legacy shell. */
@@ -338,15 +371,22 @@ function SHELL_setPB(pbKey, pbVal) {
 function v2ReadGameCfg(gameId) {
     try {
         var raw = localStorage.getItem("yk_cfg_" + gameId);
-        return raw !== null ? JSON.parse(raw) : { muted: false };
+        if (raw !== null) {
+            var obj = JSON.parse(raw);
+            return {
+                muted: obj.muted === true,
+                bg:    obj.bg    !== false   /* missing key = bg ON */
+            };
+        }
+        return { muted: false, bg: true };
     } catch (e) {
-        return { muted: false };
+        return { muted: false, bg: true };
     }
 }
 
 function v2WriteGameCfg(gameId) {
     try {
-        localStorage.setItem("yk_cfg_" + gameId, JSON.stringify({ muted: v2Muted }));
+        localStorage.setItem("yk_cfg_" + gameId, JSON.stringify({ muted: v2Muted, bg: v2BgEnabled }));
     } catch (e) { /* quota or private mode — silently ignore */ }
 }
 
@@ -446,9 +486,25 @@ function v2ToggleSound() {
     v2IconSoundOff.style.display = v2Muted ? ""     : "none";
     v2BtnSound.classList.toggle("v2-muted", v2Muted);
     if (v2GameId) v2WriteGameCfg(v2GameId);
+    if (v2GameLoaded && typeof GAME !== "undefined" && typeof GAME.onMuteChange === "function")
+        GAME.onMuteChange(v2Muted);
 }
 
 v2BtnSound.addEventListener("click", v2ToggleSound);
+
+/* --------------------------------------------------------------------------
+   BACKGROUND TOGGLE
+   -------------------------------------------------------------------------- */
+
+function v2ToggleBg() {
+    v2BgEnabled = !v2BgEnabled;
+    v2IconBgOn.style.display  = v2BgEnabled ? ""     : "none";
+    v2IconBgOff.style.display = v2BgEnabled ? "none" : "";
+    v2BtnBg.classList.toggle("v2-bg-off", !v2BgEnabled);
+    if (v2GameId) v2WriteGameCfg(v2GameId);
+}
+
+v2BtnBg.addEventListener("click", v2ToggleBg);
 
 /* --------------------------------------------------------------------------
    BACK BUTTON
@@ -690,6 +746,11 @@ function v2LoadGame(gameId) {
     v2IconSoundOn.style.display  = v2Muted ? "none" : "";
     v2IconSoundOff.style.display = v2Muted ? ""     : "none";
     v2BtnSound.classList.toggle("v2-muted", v2Muted);
+
+    v2BgEnabled = cfg.bg;
+    v2IconBgOn.style.display  = v2BgEnabled ? ""     : "none";
+    v2IconBgOff.style.display = v2BgEnabled ? "none" : "";
+    v2BtnBg.classList.toggle("v2-bg-off", !v2BgEnabled);
 
     /* Inject a <base> tag so all game-relative asset paths resolve correctly
        from ./webgames/ — same technique as game.html. */

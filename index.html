@@ -106,10 +106,12 @@
       font-size:12px; border:1px solid var(--border-soft); background:rgba(var(--accent-rgb),.05);
       padding:3px 8px; border-radius:999px; white-space:nowrap;
     }
-    .chip.web{ border-color: rgba(var(--accent-rgb),.5); }
-    .chip.v2 { border-color: rgba(var(--accent-rgb),.5); }
-    .chip.win{ border-color: rgba(255,140,0,.5); }
-    .chip.mob{ border-color: rgba(80,180,80,.5); }
+    .chip.online  { border-color: rgba(var(--accent-rgb),.55); }
+    .chip.desktop { border-color: rgba(80,110,160,.55); }
+    .chip.mobile  { border-color: rgba(60,180,90,.55); }
+    .chip.tablet  { border-color: rgba(140,80,200,.55); }
+    .chip.download{ border-color: rgba(255,140,0,.55); }
+    .chip.any     { border-color: rgba(20,170,150,.55); }
 
     .crumbs{ margin:0 0 10px; color:var(--muted); font-size:13px; }
     .crumbs a{ text-decoration:underline; text-underline-offset:3px; color:var(--muted); }
@@ -300,8 +302,8 @@
         type:  "web",
         name:  "Dungeon Crawler",
         desc:  "ASCII roguelike. Collect all diamonds, survive four enemy types, use items to escape.",
-        how:   "Arrow keys to move. Collect all diamonds and reach the exit alive. Watch out for four different enemy types.",
-        chips: ["Desktop Browser"],
+        how:   "Arrow keys to move. Space to use Holdable. Collect all diamonds to proceed to the next dungeon. Watch out for different enemy types.",
+        chips: ["Desktop", "Online"],
         icon:  "&#9787;",
         thumb: "./assets/img/thumbs/dungeon-crawler.png"
       },
@@ -311,8 +313,7 @@
         name:  "Snake",
         desc:  "Classic snake. Eat food to grow, don't hit yourself or the walls.",
         how:   "Arrow keys or swipe to steer. Eat food to grow longer. Avoid hitting the walls or your own tail.",
-        chips: ["Desktop Browser", "Touch Device"],
-        icon:  "&#9619;",
+        chips: ["Any Device", "Online"],
         thumb: "./assets/img/thumbs/snake.png"
       },
       {
@@ -321,7 +322,7 @@
         name:  "Bubble Shooter",
         desc:  "Classic hex-grid bubble shooter. 2:30 minutes on the clock — pop as many as you can!",
         how:   "Tap or drag to aim, release to fire. Match 3 or more bubbles of the same colour to pop them. Unconnected bubbles fall for bonus points. Bigger clears score multipliers. New rows push in when the grid clears. Audio by Alex McCulloch, rubberduck and WobbleBoxx Workshop. Background by lzubiaur.",
-        chips: ["Touch Device"],
+        chips: ["Mobile", "Desktop", "Tablet", "Online"],
         icon:  "\u25cf",
         thumb: "./assets/img/thumbs/bubble-shooter.png"
       },
@@ -330,8 +331,8 @@
         type:  "webv2",
         name:  "Breakout",
         desc:  "Clear all blocks with a bouncing ball. Build combos, earn bonus balls, survive 32 stages \u2014 don\u2019t let it drop.",
-        how:   "Drag anywhere on screen to move the paddle. Tap or click to launch the ball. Left/right arrow keys also move the paddle on desktop.",
-        chips: ["Desktop Browser", "Tablet"],
+        how:   "Drag anywhere on screen or move mouse to move the paddle. Tap or click to launch the ball. Left/right arrow keys also move the paddle on desktop.",
+        chips: ["Desktop", "Tablet", "Online"],
         icon:  "*",
         thumb: "./assets/img/thumbs/breakout.png"
       },
@@ -339,9 +340,9 @@
         id:    "flappy",
         type:  "web",
         name:  "Flappy",
-        desc:  "Thread Flappy through pipe gaps without touching. Background art by Paulina Riva (opengameart.org).",
-        how:   "Any key or tap to flap. Thread through the pipe gaps without touching pipes or the ground.",
-        chips: ["Desktop Browser", "Touch Device"],
+        desc:  "Thread Flappy through pipe gaps without touching them.",
+        how:   "Any key or tap to flap. Thread through the pipe gaps without touching pipes or the ground. Background art by Paulina Riva.",
+        chips: ["Any Device", "Online"],
         icon:  "&#9676;",
         thumb: "./assets/img/thumbs/flappy.png"
       },
@@ -350,8 +351,8 @@
         type:  "web",
         name:  "Shapes",
         desc:  "Drag tetrominoes onto an 8\u00d78 board. Fill whole rows or columns to clear them and score.",
-        how:   "Drag piece shapes from the tray onto the 8\u00d78 board. Fill a complete row or column to clear it and score points.",
-        chips: ["Desktop Browser", "Touch Device"],
+        how:   "Drag piece shapes from the tray onto the 8\u00d78 board. Swipe anywhere or press R to rotate shape. Fill a complete row or column to clear it and score points. The game ends if there is no possible move left.",
+        chips: ["Any Device", "Online"],
         icon:  "&#9633;",
         thumb: "./assets/img/thumbs/shapes.png"
       },
@@ -360,8 +361,8 @@
         type:  "web",
         name:  "15 Puzzle",
         desc:  "Slide 15 tiles back into order on a 4\u00d74 grid.",
-        how:   "Click a tile that is directly adjacent to the empty space to slide it. Arrange all 15 tiles in order from 1 to 15.",
-        chips: ["Desktop Browser", "Touch Device"],
+        how:   "Click or tap a tile that is directly adjacent to the empty space to slide it. Arrange all 15 tiles in order from 1 to 15.",
+        chips: ["Any Device", "Online"],
         icon:  "&#9647;",
         thumb: "./assets/img/thumbs/15puzzle.png"
       },
@@ -370,8 +371,8 @@
         type:  "web",
         name:  "Eliminate",
         desc:  "Click connected color groups to remove them. Board collapses inward. Bigger groups score more.",
-        how:   "Click any group of 2 or more connected tiles of the same color to remove them. Larger groups score exponentially more.",
-        chips: ["Desktop Browser", "Touch Device"],
+        how:   "Click or tap any group of 2 or more connected tiles of the same color to remove them. Larger groups score exponentially more. Try to eliminate all blocks without leftovers. By advancing in levels, there will be less mercy for remaining blocks.",
+        chips: ["Any Device", "Online"],
         icon:  "x",
         thumb: "./assets/img/thumbs/eliminate.png"
       },
@@ -379,9 +380,9 @@
         id:    "sokoban",
         type:  "web",
         name:  "Sokoban",
-        desc:  "Push crates onto goal squares. Can you solve all 58 levels by 'Laura Wheeler'?",
-        how:   "Arrow keys or swipe to walk. Push crates onto the blue goal fields. Press R or tap Reset to restart the current level.",
-        chips: ["Desktop Browser", "Touch Device"],
+        desc:  "Push crates onto goal squares. Can you solve all 58 levels?",
+        how:   "Arrow keys or swipe to walk. Push crates onto the blue goal fields. Press R or tap Retry to restart the current level. Press Z or tap Undo to undo your last moves. Level design done by Laura Wheeler.",
+        chips: ["Any Device", "Online"],
         icon:  "+",
         thumb: "./assets/img/thumbs/sokoban.png"
       }
@@ -393,7 +394,7 @@
       //   name:     "My Desktop Game",
       //   desc:     "A polished desktop release for Windows.",
       //   how:      "",
-      //   chips:    ["Win32"],
+      //   chips:    ["Desktop", "Download"],
       //   icon:     "&#9642;",
       //   thumb:    "./assets/img/thumbs/my-desktop-game.png",
       //   download: [
@@ -408,16 +409,22 @@
         c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
     }
 
+    // Chip vocabulary → css modifier class + native tooltip text
+    const CHIP_DEFS = {
+      "Online":     { cls: "online",   tip: "Play in your browser \u2014 no download needed" },
+      "Download":   { cls: "download", tip: "Download and install to play" },
+      "Mobile":     { cls: "mobile",   tip: "Designed for phones" },
+      "Tablet":     { cls: "tablet",   tip: "Works well on tablets" },
+      "Desktop":    { cls: "desktop",  tip: "Best on desktop with keyboard & mouse" },
+      "Any Device": { cls: "any",      tip: "Plays on phones, tablets and desktops" },
+    };
+
     function chipHtml(arr){
       return (arr||[]).map(c => {
-        let cls = "chip";
-        const cl = c.toLowerCase();
-        if(cl === "desktop browser") cls += " web";
-        if(cl === "tablet")          cls += " v2";
-        if(cl === "win32")           cls += " win";
-        if(cl === "touch device")    cls += " mob";
-        if(cl === "phone")           cls += " mob";
-        return `<span class="${cls}">${escHtml(c)}</span>`;
+        const def = CHIP_DEFS[c];
+        const cls = def ? "chip " + def.cls : "chip";
+        const tip = def ? ` title="${escHtml(def.tip)}"` : "";
+        return `<span class="${cls}"${tip}>${escHtml(c)}</span>`;
       }).join("");
     }
 

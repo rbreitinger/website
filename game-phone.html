@@ -132,6 +132,11 @@
             color: #c0392b;
         }
 
+        /* background-disabled state indicator */
+        #phn-btn-bg.phn-bg-off {
+            color: #c0392b;
+        }
+
         /* ------------------------------------------------------------------ */
         /*  CANVAS  (360 × 596 — logical game resolution, never changes)      */
         /* ------------------------------------------------------------------ */
@@ -181,6 +186,25 @@
         <div id="phn-title">Yorokobi Games</div>
 
         <div id="phn-right">
+
+            <!-- Toggle background -->
+            <button id="phn-btn-bg" class="phn-tbtn" title="Toggle background">
+                <svg id="phn-icon-bg-on" viewBox="0 0 20 20" fill="none"
+                     stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="2" y="4" width="16" height="12" rx="1.5"/>
+                    <circle cx="7" cy="8.5" r="1.5"/>
+                    <path d="M2 14 L6.5 10 L10 12.5 L13.5 9.5 L18 13"/>
+                </svg>
+                <svg id="phn-icon-bg-off" viewBox="0 0 20 20" fill="none"
+                     stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round"
+                     style="display:none">
+                    <rect x="2" y="4" width="16" height="12" rx="1.5"/>
+                    <line x1="7" y1="8" x2="13" y2="14"/>
+                    <line x1="13" y1="8" x2="7" y2="14"/>
+                </svg>
+            </button>
 
             <!-- Toggle sound -->
             <button id="phn-btn-sound" class="phn-tbtn" title="Toggle sound">
@@ -275,6 +299,9 @@ var phnIconSoundOn  = document.getElementById("phn-icon-sound-on");
 var phnIconSoundOff = document.getElementById("phn-icon-sound-off");
 var phnIconFsEnter  = document.getElementById("phn-icon-fs-enter");
 var phnIconFsExit   = document.getElementById("phn-icon-fs-exit");
+var phnBtnBg        = document.getElementById("phn-btn-bg");
+var phnIconBgOn     = document.getElementById("phn-icon-bg-on");
+var phnIconBgOff    = document.getElementById("phn-icon-bg-off");
 
 var phnCtx = phnCanvas.getContext("2d");
 
@@ -283,6 +310,7 @@ var phnCtx = phnCanvas.getContext("2d");
    -------------------------------------------------------------------------- */
 
 var phnMuted        = false;
+var phnBgEnabled    = true;
 var phnGameRunning  = false;
 var phnLastTime     = 0;
 var phnAccumulator  = 0;
@@ -298,6 +326,11 @@ var phnBackUrl      = "index.html#games";   /* set to absolute URL in loadGame *
 /* Returns true when the player has muted sound. */
 function SHELL_isMuted() {
     return phnMuted;
+}
+
+/* Returns true when the background image should be drawn. */
+function SHELL_isBgEnabled() {
+    return phnBgEnabled;
 }
 
 /* Personal best storage — same API as all other shells. */
@@ -321,15 +354,22 @@ function SHELL_setPB(pbKey, pbVal) {
 function phnReadGameCfg(gameId) {
     try {
         var raw = localStorage.getItem("yk_cfg_" + gameId);
-        return raw !== null ? JSON.parse(raw) : { muted: false };
+        if (raw !== null) {
+            var obj = JSON.parse(raw);
+            return {
+                muted: obj.muted === true,
+                bg:    obj.bg    !== false   /* missing key = bg ON */
+            };
+        }
+        return { muted: false, bg: true };
     } catch (e) {
-        return { muted: false };
+        return { muted: false, bg: true };
     }
 }
 
 function phnWriteGameCfg(gameId) {
     try {
-        localStorage.setItem("yk_cfg_" + gameId, JSON.stringify({ muted: phnMuted }));
+        localStorage.setItem("yk_cfg_" + gameId, JSON.stringify({ muted: phnMuted, bg: phnBgEnabled }));
     } catch (e) { /* quota or private mode — silently ignore */ }
 }
 
@@ -415,9 +455,25 @@ function phnToggleSound() {
     phnIconSoundOff.style.display = phnMuted ? ""     : "none";
     phnBtnSound.classList.toggle("phn-muted", phnMuted);
     if (phnGameId) phnWriteGameCfg(phnGameId);
+    if (phnGameLoaded && typeof GAME !== "undefined" && typeof GAME.onMuteChange === "function")
+        GAME.onMuteChange(phnMuted);
 }
 
 phnBtnSound.addEventListener("click", phnToggleSound);
+
+/* --------------------------------------------------------------------------
+   BACKGROUND TOGGLE
+   -------------------------------------------------------------------------- */
+
+function phnToggleBg() {
+    phnBgEnabled = !phnBgEnabled;
+    phnIconBgOn.style.display  = phnBgEnabled ? ""     : "none";
+    phnIconBgOff.style.display = phnBgEnabled ? "none" : "";
+    phnBtnBg.classList.toggle("phn-bg-off", !phnBgEnabled);
+    if (phnGameId) phnWriteGameCfg(phnGameId);
+}
+
+phnBtnBg.addEventListener("click", phnToggleBg);
 
 /* --------------------------------------------------------------------------
    BACK BUTTON
@@ -686,6 +742,11 @@ function phnLoadGame(gameId) {
     phnIconSoundOn.style.display  = phnMuted ? "none" : "";
     phnIconSoundOff.style.display = phnMuted ? ""     : "none";
     phnBtnSound.classList.toggle("phn-muted", phnMuted);
+
+    phnBgEnabled = cfg.bg;
+    phnIconBgOn.style.display  = phnBgEnabled ? ""     : "none";
+    phnIconBgOff.style.display = phnBgEnabled ? "none" : "";
+    phnBtnBg.classList.toggle("phn-bg-off", !phnBgEnabled);
 
     var baseTag = document.createElement("base");
     baseTag.href = new URL("./webgames/", location.href).href;

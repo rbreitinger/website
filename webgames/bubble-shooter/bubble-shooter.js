@@ -662,8 +662,8 @@ function bshDrawBub(ctx, x, y, col, alpha) {
 
 // ── draw sections ─────────────────────────────────────────────────────────────
 function bshDrawBackground(ctx) {
-    // Background image (360×596) — plain colour fallback until loaded
-    if (BSH_BG_READY) {
+    // Background image (360×596) — skipped if player disabled it or image not yet loaded
+    if (BSH_BG_READY && SHELL_isBgEnabled()) {
         ctx.drawImage(BSH_BG_IMG, 0, 0, BSH_CW, BSH_CH);
     } else {
         ctx.fillStyle = "#0e0e20";
@@ -688,18 +688,6 @@ function bshDrawBackground(ctx) {
     ctx.beginPath();
     ctx.moveTo(BSH_MAR, BSH_PLAY_BOT);
     ctx.lineTo(BSH_CW - BSH_MAR, BSH_PLAY_BOT);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.restore();
-
-    // Scroll threshold line (subtle hint)
-    ctx.save();
-    ctx.setLineDash([4, 10]);
-    ctx.lineWidth   = 1;
-    ctx.strokeStyle = "rgba(100,100,200,0.22)";
-    ctx.beginPath();
-    ctx.moveTo(BSH_MAR, BSH_THRESH_Y);
-    ctx.lineTo(BSH_CW - BSH_MAR, BSH_THRESH_Y);
     ctx.stroke();
     ctx.setLineDash([]);
     ctx.restore();
@@ -1098,5 +1086,13 @@ var GAME = {
         bshEnsureBgm();
         BSH_aimAng = bshCalcAng(mx, my);
         bshLaunch();
+    },
+
+    onMuteChange: function(muted) {
+        if (muted) {
+            bshBgmStop();
+        } else {
+            bshEnsureBgm();   // only restarts if phase is "play" and BGM is paused
+        }
     }
 };
