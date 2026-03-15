@@ -1,1 +1,5 @@
+# Thumbs.db
 Thumbs.db
+
+# local config with real API keys (once supabase gets involved)
+config.js
