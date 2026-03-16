@@ -119,6 +119,7 @@ var BSH_streakMult;   // current score multiplier from streak
 var BSH_overLockMs;      // ms since game over — button locked for first 1000ms
 var BSH_timerAlertFired; // true once the 30s alert sound has played
 var BSH_timerLastSec;    // last integer second value — used for per-second tick below 10s
+var BSH_readyMs;         // ms remaining in the pre-game "ready" countdown (3000→0)
 
 // ── grid helpers ──────────────────────────────────────────────────────────────
 function bshPar(r)       { return BSH_grid[r].par; }
@@ -979,6 +980,46 @@ function bshUpdateParticles(dt) {
     }
 }
 
+// ── ready countdown overlay ───────────────────────────────────────────────────
+function bshDrawReady(ctx) {
+    ctx.fillStyle = "rgba(8,8,24,0.78)";
+    ctx.fillRect(0, 0, BSH_CW, BSH_CH);
+
+    var num = Math.ceil(BSH_readyMs / 1000);
+    if (num < 1) num = 1;
+
+    // t: 1.0 right as the digit appears, 0.0 just before it flips — number
+    // scales down from 1.45× to 1.0× over the course of each second
+    var t     = (BSH_readyMs % 1000) / 1000;
+    var scale = 1 + t * 0.45;
+
+    ctx.save();
+    ctx.textAlign = "center";
+
+    // "GET READY" label
+    ctx.fillStyle = "#8888cc";
+    ctx.font      = "bold 22px sans-serif";
+    ctx.fillText("GET READY", BSH_CW / 2, BSH_CH / 2 - 68);
+
+    // Countdown number — zooms in and settles each second
+    var numCol = num === 1 ? "#f0b820" : "#ffffff";
+    ctx.translate(BSH_CW / 2, BSH_CH / 2);
+    ctx.scale(scale, scale);
+    ctx.fillStyle    = numCol;
+    ctx.font         = "bold 88px monospace";
+    ctx.textBaseline = "middle";
+    ctx.fillText(num, 0, 0);
+    ctx.textBaseline = "alphabetic";
+
+    ctx.restore();
+
+    // Small hint below
+    ctx.textAlign = "center";
+    ctx.fillStyle = "rgba(140,150,180,0.75)";
+    ctx.font      = "12px sans-serif";
+    ctx.fillText("go fullscreen \u2022 adjust sound", BSH_CW / 2, BSH_CH / 2 + 78);
+}
+
 // ── GAME object ───────────────────────────────────────────────────────────────
 var GAME = {
     title: "Bubble Shooter",
@@ -989,7 +1030,8 @@ var GAME = {
     },
 
     start: function() {
-        BSH_phase      = "play";
+        BSH_phase      = "ready";
+        BSH_readyMs    = 3000;
         BSH_overReason = "";
         BSH_score      = 0;
         BSH_timeMs     = BSH_GAME_SECS * 1000;
@@ -1011,6 +1053,11 @@ var GAME = {
     },
 
     update: function(dt) {
+        if (BSH_phase === "ready") {
+            BSH_readyMs -= dt;
+            if (BSH_readyMs <= 0) BSH_phase = "play";
+            return;
+        }
         if (BSH_phase === "over") {
             BSH_overLockMs += dt;
             return;
@@ -1050,10 +1097,12 @@ var GAME = {
         bshDrawNext(ctx);
         bshDrawHUD(ctx);
         bshDrawPopups(ctx);
-        if (BSH_phase === "over") bshDrawGameOver(ctx);
+        if (BSH_phase === "ready") bshDrawReady(ctx);
+        if (BSH_phase === "over")  bshDrawGameOver(ctx);
     },
 
     onDragStart: function(mx, my) {
+        if (BSH_phase === "ready") return;
         if (BSH_phase !== "play" || BSH_flying) return;
         bshEnsureBgm();
         BSH_aiming = true;
@@ -1061,10 +1110,12 @@ var GAME = {
     },
 
     onDrag: function(mx, my) {
+        if (BSH_phase === "ready") return;
         if (BSH_aiming) BSH_aimAng = bshCalcAng(mx, my);
     },
 
     onDragEnd: function(mx, my) {
+        if (BSH_phase === "ready") return;
         if (!BSH_aiming) return;
         BSH_aiming = false;
         BSH_aimAng = bshCalcAng(mx, my);
@@ -1072,6 +1123,7 @@ var GAME = {
     },
 
     onClick: function(mx, my) {
+        if (BSH_phase === "ready") return;
         if (BSH_phase === "over") {
             if (BSH_overLockMs < 1000) return;   // button locked for first second
             var mid = BSH_CH / 2;
