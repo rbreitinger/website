@@ -1,5 +1,4 @@
-# Thumbs.db
+config/
+*.log
+.DS_Store
 Thumbs.db
-
-# local config with real API keys (once supabase gets involved)
-config.js
