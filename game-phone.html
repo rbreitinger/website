@@ -138,6 +138,56 @@
         }
 
         /* ------------------------------------------------------------------ */
+        /*  ROTATE OVERLAY — shown on phones/tablets in landscape              */
+        /*  Hidden on desktop (screen short-side > 768 px).                   */
+        /* ------------------------------------------------------------------ */
+
+        #phn-rotate-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: #0d0d1a;
+            z-index: 9999;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            color: #c8dff0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        #phn-rotate-overlay.phn-rotate-show {
+            display: flex;
+        }
+
+        #phn-rotate-overlay svg {
+            width: 72px;
+            height: 72px;
+            color: #0078d4;
+            animation: phn-rotate-hint 1.8s ease-in-out infinite;
+        }
+
+        @keyframes phn-rotate-hint {
+            0%   { transform: rotate(0deg);   }
+            30%  { transform: rotate(-25deg);  }
+            70%  { transform: rotate(25deg);   }
+            100% { transform: rotate(0deg);   }
+        }
+
+        #phn-rotate-overlay p {
+            font-size: 17px;
+            font-weight: 500;
+            letter-spacing: 0.03em;
+            color: #a8c8e8;
+            margin: 0;
+        }
+
+        #phn-rotate-overlay small {
+            font-size: 12px;
+            color: #5a6a80;
+        }
+
+        /* ------------------------------------------------------------------ */
         /*  CANVAS  (360 × 596 — logical game resolution, never changes)      */
         /* ------------------------------------------------------------------ */
 
@@ -258,6 +308,31 @@
 <!-- /phn-wrapper -->
 
 
+<!-- ========================================================================
+     ROTATE OVERLAY
+     Shown on phones / tablets when the device is held in landscape.
+     Hidden on desktop (threshold: screen short-side > 768 px).
+     CSS animation gives a gentle rock to hint "turn me back".
+     ======================================================================== -->
+
+<div id="phn-rotate-overlay">
+    <!-- Phone-rotation icon -->
+    <svg viewBox="0 0 72 72" fill="none" stroke="currentColor"
+         stroke-width="3" stroke-linecap="round" stroke-linejoin="round"
+         xmlns="http://www.w3.org/2000/svg">
+        <!-- phone body -->
+        <rect x="20" y="10" width="32" height="52" rx="5"/>
+        <!-- home indicator -->
+        <line x1="33" y1="55" x2="39" y2="55"/>
+        <!-- rotation arrow — clockwise arc above the phone -->
+        <path d="M 20 8 A 22 22 0 0 1 52 8" stroke-dasharray="0"/>
+        <polyline points="52,2 52,10 44,10"/>
+    </svg>
+    <p>Please rotate to portrait</p>
+    <small>This game is designed for portrait mode.</small>
+</div>
+
+
 <script>
 /* ============================================================================
    GAME-PHONE SHELL  —  Yorokobi Games
@@ -304,6 +379,8 @@ var phnIconBgOn     = document.getElementById("phn-icon-bg-on");
 var phnIconBgOff    = document.getElementById("phn-icon-bg-off");
 
 var phnCtx = phnCanvas.getContext("2d");
+
+var phnRotateOverlay = document.getElementById("phn-rotate-overlay");
 
 /* --------------------------------------------------------------------------
    STATE
@@ -404,21 +481,30 @@ function phnApplyScale() {
     phnWrapper.style.transform = "scale(" + scale + ")";
 }
 
+/* Show the rotate overlay on phones / tablets held in landscape.
+   Skip on desktop (screen short-side > 768 px — landscape is fine there). */
+function phnCheckOrientation() {
+    var shortSide   = Math.min(window.screen.width, window.screen.height);
+    var isMobile    = shortSide <= 768;
+    var isLandscape = window.innerWidth > window.innerHeight;
+    phnRotateOverlay.classList.toggle("phn-rotate-show", isMobile && isLandscape);
+}
+
 window.addEventListener("resize", function () {
     clearTimeout(phnScaleTimer);
-    phnScaleTimer = setTimeout(phnApplyScale, 80);
+    phnScaleTimer = setTimeout(function () { phnApplyScale(); phnCheckOrientation(); }, 80);
 });
 
 if (window.screen && window.screen.orientation) {
     window.screen.orientation.addEventListener("change", function () {
         clearTimeout(phnScaleTimer);
-        phnScaleTimer = setTimeout(phnApplyScale, 80);
+        phnScaleTimer = setTimeout(function () { phnApplyScale(); phnCheckOrientation(); }, 80);
     });
 }
 
 window.addEventListener("orientationchange", function () {
     clearTimeout(phnScaleTimer);
-    phnScaleTimer = setTimeout(phnApplyScale, 80);
+    phnScaleTimer = setTimeout(function () { phnApplyScale(); phnCheckOrientation(); }, 80);
 });
 
 /* --------------------------------------------------------------------------
@@ -427,8 +513,17 @@ window.addEventListener("orientationchange", function () {
 
 function phnToggleFullscreen() {
     if (!document.fullscreenElement) {
-        document.documentElement.requestFullscreen().catch(function () {});
+        document.documentElement.requestFullscreen().then(function () {
+            /* Attempt portrait lock — works on Android Chrome in fullscreen.
+               Silently ignored on iOS and desktop. */
+            if (window.screen && window.screen.orientation && window.screen.orientation.lock) {
+                window.screen.orientation.lock("portrait").catch(function () {});
+            }
+        }).catch(function () {});
     } else {
+        if (window.screen && window.screen.orientation && window.screen.orientation.unlock) {
+            window.screen.orientation.unlock();
+        }
         document.exitFullscreen().catch(function () {});
     }
 }
@@ -824,6 +919,7 @@ function phnShowError(msg) {
    -------------------------------------------------------------------------- */
 
 phnApplyScale();
+phnCheckOrientation();
 
 var phnParams  = new URLSearchParams(location.search);
 var phnIdParam = phnParams.get("id");
