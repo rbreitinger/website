@@ -1,7 +1,7 @@
 "use strict";
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  BUBBLE SHOOTER  ·  phone shell game  (360 × 596)
+//  BUBBLE RUSH  ·  phone shell game  (360 × 596)
 //  prefix: BSH_
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -45,17 +45,17 @@ var BSH_CFILL   = ["", "#e03040", "#2a9de0", "#3cbc50", "#f0b820", "#b040d0"];
 var BSH_CDARK   = ["", "#901828", "#105898", "#1a6030", "#8a5800", "#600878"];
 
 // ── audio ─────────────────────────────────────────────────────────────────────
-var BSH_SND_BGM      = new Audio("bubble-shooter/bgm.ogg");
-var BSH_SND_SHOOT    = new Audio("bubble-shooter/shoot.ogg");
-var BSH_SND_POP      = new Audio("bubble-shooter/pop.ogg");
-var BSH_SND_DROP     = new Audio("bubble-shooter/drop.ogg");
-var BSH_SND_GAMEOVER = new Audio("bubble-shooter/gameover.ogg");
-var BSH_SND_TIMER    = new Audio("bubble-shooter/timer.ogg");
+var BSH_SND_BGM      = new Audio("bubble-rush/bgm.ogg");
+var BSH_SND_SHOOT    = new Audio("bubble-rush/shoot.ogg");
+var BSH_SND_POP      = new Audio("bubble-rush/pop.ogg");
+var BSH_SND_DROP     = new Audio("bubble-rush/drop.ogg");
+var BSH_SND_GAMEOVER = new Audio("bubble-rush/gameover.ogg");
+var BSH_SND_TIMER    = new Audio("bubble-rush/timer.ogg");
 
 var BSH_BG_IMG       = new Image();
 var BSH_BG_READY     = false;
 BSH_BG_IMG.onload    = function() { BSH_BG_READY = true; };
-BSH_BG_IMG.src       = "bubble-shooter/background.png";
+BSH_BG_IMG.src       = "bubble-rush/background.png";
 
 BSH_SND_BGM.loop = true;
 
@@ -264,7 +264,7 @@ function bshGameOver(reason) {
     BSH_aiming     = false;
     if (BSH_score > BSH_pb) {
         BSH_pb = BSH_score;
-        SHELL_setPB("bubble-shooter", BSH_pb);
+        SHELL_setPB("bubble-rush", BSH_pb);
     }
     bshBgmStop();
     bshSnd(BSH_SND_GAMEOVER);
@@ -1022,11 +1022,11 @@ function bshDrawReady(ctx) {
 
 // ── GAME object ───────────────────────────────────────────────────────────────
 var GAME = {
-    title: "Bubble Shooter",
+    title: "Bubble Rush",
 
     init: function(canvas) {
         BSH_ctx = canvas.getContext("2d");
-        BSH_pb  = SHELL_getPB("bubble-shooter") || 0;
+        BSH_pb  = SHELL_getPB("bubble-rush") || SHELL_getPB("bubble-shooter") || 0;
     },
 
     start: function() {
