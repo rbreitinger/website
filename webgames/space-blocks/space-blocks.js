@@ -1,8 +1,8 @@
 // =============================================================================
 // breakoutv2.js  —  Breakout for game-v2.html  (960 × 640 canvas)
-// Place at:  ./webgames/breakoutv2/breakoutv2.js
-// Levels at: ./webgames/breakoutv2/breakout.lev   (copy from breakout/)
-// Sounds at: ./webgames/breakoutv2/*.ogg           (copy from breakout/)
+// Place at:  ./webgames/space-blocks/space-blocks.js
+// Levels at: ./webgames/space-blocks/breakout.lev
+// Sounds at: ./webgames/space-blocks/*.ogg
 // =============================================================================
 
 // ── grid ──────────────────────────────────────────────────────────────────────
@@ -10,20 +10,22 @@ const V2BRK_COLS         = 10;
 const V2BRK_ROWS         = 10;
 const V2BRK_BW           = 54;                                  // block width  px
 const V2BRK_BH           = 27;                                  // block height px
+const V2BRK_HUD_H        = 40;                                  // HUD stats strip height above blocks
 const V2BRK_OX           = Math.floor((V2_CW - V2BRK_COLS * V2BRK_BW) / 2); // 210
-const V2BRK_OY           = 20;                                  // block grid top y
+const V2BRK_OY           = V2BRK_HUD_H + 5;                    // block grid top y  (45)
 
 // ── play-field walls (ball bounces within this column) ────────────────────────
 const V2BRK_PFW          = V2BRK_COLS * V2BRK_BW;              // 540
 const V2BRK_PF_LEFT      = V2BRK_OX;                           // left wall x   (210)
 const V2BRK_PF_RIGHT     = V2BRK_OX + V2BRK_PFW;              // right wall x  (750)
-const V2BRK_PF_TOP       = V2BRK_OY;                           // ceiling y
+const V2BRK_PF_TOP       = V2BRK_OY;                           // ceiling y     (45)
 
 // ── ball ──────────────────────────────────────────────────────────────────────
-const V2BRK_BALL_R       = 8;                                   // radius px
-const V2BRK_SPEED        = 4.5;                                 // px per update step
-const V2BRK_DELTA_MAX    = 2.7;                                 // max dx/dy component
+const V2BRK_BALL_R        = 8;                                  // radius px
+const V2BRK_SPEED         = 3.6;                                // px per update step
+const V2BRK_DELTA_MAX     = 2.7;                                // max dx/dy component
 const V2BRK_LAUNCH_SPREAD = 0.5;                                // ± radians from straight up
+const V2BRK_MIN_ANGLE_DEG = 35;                                 // minimum vertical angle (deg from horizontal)
 
 // ── paddle ────────────────────────────────────────────────────────────────────
 const V2BRK_PAD_W        = 68;                                  // width  px
@@ -37,14 +39,13 @@ const V2BRK_PAD_KEY_SPD  = 5;                                   // px per step f
 const V2BRK_PLAY_CLIP_H  = V2BRK_PAD_Y + V2BRK_PAD_H + 9;    // play area clip bottom  (412)
 const V2BRK_BALL_LOST_Y  = V2BRK_PAD_Y + V2BRK_PAD_H + 20;   // ball lost threshold    (423)
 const V2BRK_SEP_Y        = 420;                                 // separator line y       ← adjust
-const V2BRK_STATS_LBL_Y  = 436;                                 // stats label baseline   ← adjust
-const V2BRK_STATS_VAL_Y  = 452;                                 // stats value baseline   ← adjust
-const V2BRK_DRAG_Y       = 476;                                 // drag zone top hint y   ← adjust
+const V2BRK_DZ_TOP       = 428;                                 // drag zone rect top y   ← adjust
+const V2BRK_DZ_BOT       = 618;                                 // drag zone rect bottom y
 
 // ── game limits ───────────────────────────────────────────────────────────────
 const V2BRK_MAX_STAGES   = 32;
-const V2BRK_INIT_BALLS   = 3;
-const V2BRK_MAX_BALLS    = 10;
+const V2BRK_INIT_BALLS   = 5;                                   // starting balls  (was 3)
+const V2BRK_MAX_BALLS    = 9;                                   // max collectible balls  (was 10)
 const V2BRK_MAX_PARTS    = 15;
 const V2BRK_STUCK_MS     = 12000;
 
@@ -63,7 +64,8 @@ const V2BRK_COMBO1_AT    = 2;
 const V2BRK_COMBO2_AT    = 6;
 
 // ── personal best key (shared with legacy — same scores, same game) ───────────
-const V2BRK_PB_KEY       = "breakout_score";
+const V2BRK_PB_KEY        = "space_blocks_score";   // new key
+const V2BRK_PB_KEY_LEGACY = "breakout_score";        // old key — migrated on first load
 
 // ── states ────────────────────────────────────────────────────────────────────
 const V2BRK_S_LOADING    = 0;
@@ -87,10 +89,13 @@ const V2BRK_BLOCK_CLR = [
 ];
 
 // ── colours ───────────────────────────────────────────────────────────────────
-const V2BRK_C_BG         = "#0D0D1A";   // canvas background (outside play column)
-const V2BRK_C_PF_BG      = "#000000";   // play field background
-const V2BRK_C_SEP        = "#2A2A4A";   // separator line
-const V2BRK_C_DRAG_LINE  = "#1E1E3A";   // drag zone dashed hint
+const V2BRK_C_BG         = "#0D0D1A";                // canvas background (fallback, no bg image)
+const V2BRK_C_PF_BG      = "rgba(0,0,0,0.82)";       // play field overlay — semi-transparent so bg shows faintly
+const V2BRK_C_HUD_BG     = "rgba(10,10,28,0.88)";    // HUD strip background
+const V2BRK_C_SEP        = "#2A2A4A";                 // separator line
+const V2BRK_C_DZ_BORDER  = "#2A2A5A";                 // drag zone border
+const V2BRK_C_DZ_FILL    = "rgba(6,6,22,0.72)";       // drag zone fill (over background)
+const V2BRK_C_DZ_LABEL   = "#484880";                 // drag zone hint text
 const V2BRK_C_PAD_DARK   = "#006400";
 const V2BRK_C_PAD_MID    = "#00AA00";
 const V2BRK_C_PAD_MAIN   = "#00CC00";
@@ -110,17 +115,17 @@ const V2BRK_C_STATS_VAL  = "#C8D8E8";   // stats value bright colour
 const V2BRK_C_COMBO_TXT  = "#AADE55";
 
 // ── sounds ────────────────────────────────────────────────────────────────────
-const V2BRK_SND_LAUNCH   = new Audio("breakoutv2/launch.ogg");
-const V2BRK_SND_RELAUNCH = new Audio("breakoutv2/relaunch.ogg");
-const V2BRK_SND_BOUNCE   = new Audio("breakoutv2/bounce.ogg");
-const V2BRK_SND_BREAK    = new Audio("breakoutv2/break.ogg");
-const V2BRK_SND_COMBO1   = new Audio("breakoutv2/combo1.ogg");
-const V2BRK_SND_COMBO2   = new Audio("breakoutv2/combo2.ogg");
-const V2BRK_SND_SOLID    = new Audio("breakoutv2/solid.ogg");
-const V2BRK_SND_MISS     = new Audio("breakoutv2/miss.ogg");
-const V2BRK_SND_GAMEOVER = new Audio("breakoutv2/gameover.ogg");
-const V2BRK_SND_CLEAR    = new Audio("breakoutv2/clear.ogg");
-const V2BRK_SND_HISCORE  = new Audio("breakoutv2/hiscore.ogg");
+const V2BRK_SND_LAUNCH   = new Audio("space-blocks/launch.ogg");
+const V2BRK_SND_RELAUNCH = new Audio("space-blocks/relaunch.ogg");
+const V2BRK_SND_BOUNCE   = new Audio("space-blocks/bounce.ogg");
+const V2BRK_SND_BREAK    = new Audio("space-blocks/break.ogg");
+const V2BRK_SND_COMBO1   = new Audio("space-blocks/combo1.ogg");
+const V2BRK_SND_COMBO2   = new Audio("space-blocks/combo2.ogg");
+const V2BRK_SND_SOLID    = new Audio("space-blocks/solid.ogg");
+const V2BRK_SND_MISS     = new Audio("space-blocks/miss.ogg");
+const V2BRK_SND_GAMEOVER = new Audio("space-blocks/gameover.ogg");
+const V2BRK_SND_CLEAR    = new Audio("space-blocks/clear.ogg");
+const V2BRK_SND_HISCORE  = new Audio("space-blocks/hiscore.ogg");
 
 function v2brkSnd(snd) {
     if (!SHELL_isMuted()) { snd.currentTime = 0; snd.play().catch(() => {}); }
@@ -135,7 +140,7 @@ let v2brkGrid        = [];
 let v2brkWantsStart  = false;   // start() was called before levels finished loading
 
 function v2brkLoadLevels() {
-    fetch("breakoutv2/breakout.lev")
+    fetch("space-blocks/space-blocks.lev")
         .then(r => r.text())
         .then(txt => {
             const nums = txt.trim().split(/\s+/).map(Number);
@@ -209,6 +214,7 @@ let v2brkBalls     = V2BRK_INIT_BALLS;
 let v2brkCombo     = 0;
 let v2brkStuckMs   = 0;
 let v2brkNewBest   = false;
+let v2brkOverLockMs = 0;   // 1-second Play Again button lock after game over
 
 // paddle
 let v2brkPadX      = V2BRK_OX + V2BRK_PFW / 2;
@@ -233,17 +239,25 @@ let _v2brkKeyLeft  = false;
 let _v2brkKeyRight = false;
 
 // pointer lock state
-let _v2brkLocked   = false;
+let _v2brkLocked      = false;
+let _v2brkLockSkipOne = false;  // skip first mousemove after lock grant (avoids snap)
+
+// background image
+let _v2brkBgImg    = null;
+let _v2brkBgLoaded = false;
 
 // =============================================================================
 // POINTER LOCK — free mouse tracking on desktop
 // =============================================================================
 function v2brkOnLockChange() {
-    _v2brkLocked = (document.pointerLockElement === _v2brkCanvas);
+    const nowLocked = (document.pointerLockElement === _v2brkCanvas);
+    if (nowLocked && !_v2brkLocked) _v2brkLockSkipOne = true;  // skip first event on grant
+    _v2brkLocked = nowLocked;
 }
 
 function v2brkOnFreeMouse(e) {
     if (!_v2brkLocked) return;
+    if (_v2brkLockSkipOne) { _v2brkLockSkipOne = false; return; }
     if (v2brkState !== V2BRK_S_READY && v2brkState !== V2BRK_S_PLAYING) return;
     const rc    = _v2brkCanvas.getBoundingClientRect();
     const scale = V2_CW / rc.width;
@@ -273,6 +287,22 @@ function v2brkClampPad() {
     const hi = V2BRK_OX + V2BRK_PFW - V2BRK_PAD_W / 2 - V2BRK_PAD_EDGE;
     if (v2brkPadX < lo) v2brkPadX = lo;
     if (v2brkPadX > hi) v2brkPadX = hi;
+}
+
+// Enforce minimum vertical angle so the ball never travels nearly horizontally.
+// Works on any (dx, dy) pair, normalised or not — re-normalises to unit vector.
+function v2brkEnforceMinAngle() {
+    const spd = Math.sqrt(v2brkBDX * v2brkBDX + v2brkBDY * v2brkBDY);
+    if (spd === 0) return;
+    let nx = v2brkBDX / spd;
+    let ny = v2brkBDY / spd;
+    const minSin = Math.sin(V2BRK_MIN_ANGLE_DEG * Math.PI / 180);
+    if (Math.abs(ny) < minSin) {
+        ny = minSin * (ny >= 0 ? 1 : -1);
+        nx = Math.sqrt(1 - ny * ny) * (nx >= 0 ? 1 : -1);
+    }
+    v2brkBDX = nx;
+    v2brkBDY = ny;
 }
 
 function v2brkCapDelta() {
@@ -310,12 +340,14 @@ function v2brkEnter(st) {
 
     if (st === V2BRK_S_GAMEOVER) {
         v2brkCheckBest();
+        v2brkOverLockMs = 0;
         v2brkSnd(V2BRK_SND_GAMEOVER);
         v2brkUnlockMouse();
     }
 
     if (st === V2BRK_S_COMPLETE) {
         v2brkCheckBest();
+        v2brkOverLockMs = 0;
         v2brkUnlockMouse();
     }
 }
@@ -460,10 +492,12 @@ function v2brkUpdatePlaying(dt) {
     if (v2brkBX < V2BRK_PF_LEFT + V2BRK_BALL_R) {
         v2brkBX  = V2BRK_PF_LEFT + V2BRK_BALL_R;
         v2brkBDX = Math.abs(v2brkBDX);
+        v2brkEnforceMinAngle();
         v2brkSnd(V2BRK_SND_BOUNCE);
     } else if (v2brkBX > V2BRK_PF_RIGHT - V2BRK_BALL_R) {
         v2brkBX  = V2BRK_PF_RIGHT - V2BRK_BALL_R;
         v2brkBDX = -Math.abs(v2brkBDX);
+        v2brkEnforceMinAngle();
         v2brkSnd(V2BRK_SND_BOUNCE);
     }
 
@@ -471,12 +505,14 @@ function v2brkUpdatePlaying(dt) {
     if (v2brkBY < V2BRK_PF_TOP + V2BRK_BALL_R) {
         v2brkBY  = V2BRK_PF_TOP + V2BRK_BALL_R;
         v2brkBDY = Math.abs(v2brkBDY);
+        v2brkEnforceMinAngle();
         v2brkSnd(V2BRK_SND_BOUNCE);
     }
 
     // Block collision (skip once ball is clearly below block grid)
     if (v2brkBY < V2BRK_OY + V2BRK_ROWS * V2BRK_BH + V2BRK_BALL_R) {
         v2brkCollideBlocks();
+        v2brkEnforceMinAngle();
     }
 
     // Paddle collision
@@ -484,11 +520,15 @@ function v2brkUpdatePlaying(dt) {
         v2brkBY - V2BRK_BALL_R <= V2BRK_PAD_Y + V2BRK_PAD_H &&
         v2brkBX  >= v2brkPadLeft()  - V2BRK_BALL_R &&
         v2brkBX  <= v2brkPadRight() + V2BRK_BALL_R) {
-        v2brkBY       = V2BRK_PAD_Y - V2BRK_BALL_R - 1;
-        v2brkBDY      = -Math.abs(v2brkBDY);              // always bounce upward
-        v2brkBDX     += (v2brkBX - v2brkPadX) * V2BRK_PAD_INF;
-        v2brkCombo    = 0;
-        v2brkStuckMs  = 0;
+        v2brkBY      = V2BRK_PAD_Y - V2BRK_BALL_R - 1;
+        v2brkBDY     = -Math.abs(v2brkBDY);              // always bounce upward
+        v2brkBDX    += (v2brkBX - v2brkPadX) * V2BRK_PAD_INF;
+        // Re-normalise: paddle zone shifts angle only, never speed
+        const _pspd  = Math.sqrt(v2brkBDX * v2brkBDX + v2brkBDY * v2brkBDY);
+        if (_pspd > 0) { v2brkBDX /= _pspd; v2brkBDY /= _pspd; }
+        v2brkEnforceMinAngle();
+        v2brkCombo   = 0;
+        v2brkStuckMs = 0;
         v2brkSnd(V2BRK_SND_BOUNCE);
     }
 
@@ -582,51 +622,62 @@ function v2brkDrawBall() {
     _v2brkCtx.fill();
 }
 
-// Stats strip — four items centred in equal quarters of the play field width
+// HUD stats strip — drawn above the block grid
 function v2brkDrawStats() {
     const cx   = _v2brkCtx;
     const segW = V2BRK_PFW / 4;   // 135 px per segment
 
-    // Separator line
+    // Background
+    cx.fillStyle = V2BRK_C_HUD_BG;
+    cx.fillRect(V2BRK_OX, 0, V2BRK_PFW, V2BRK_HUD_H);
+
+    // Bottom separator
     cx.strokeStyle = V2BRK_C_SEP;
     cx.lineWidth   = 1;
     cx.beginPath();
-    cx.moveTo(V2BRK_OX,           V2BRK_SEP_Y);
-    cx.lineTo(V2BRK_OX + V2BRK_PFW, V2BRK_SEP_Y);
+    cx.moveTo(V2BRK_OX,             V2BRK_HUD_H);
+    cx.lineTo(V2BRK_OX + V2BRK_PFW, V2BRK_HUD_H);
     cx.stroke();
 
     cx.textBaseline = "alphabetic";
     cx.textAlign    = "center";
 
-    // Helper: draw dim label above bright value
-    function statCell(segIdx, lbl, val) {
+    const lblY = 13;
+    const valY = 32;
+
+    function statCell(segIdx, lbl, val, valColour) {
         const segCX = V2BRK_OX + segIdx * segW + segW / 2;
-        cx.font      = v2brkFnt(12);
+        cx.font      = v2brkFnt(10);
         cx.fillStyle = V2BRK_C_STATS_LBL;
-        cx.fillText(lbl, segCX, V2BRK_STATS_LBL_Y);
-        cx.font      = v2brkFnt(15);
-        cx.fillStyle = V2BRK_C_STATS_VAL;
-        cx.fillText(val, segCX, V2BRK_STATS_VAL_Y);
+        cx.fillText(lbl, segCX, lblY);
+        cx.font      = "bold " + v2brkFnt(16);
+        cx.fillStyle = valColour || V2BRK_C_STATS_VAL;
+        cx.fillText(val, segCX, valY);
     }
 
     statCell(0, "STAGE", (v2brkStageIdx + 1) + "/" + v2brkTotalStages);
     statCell(1, "SCORE", String(v2brkScore).padStart(6, "0"));
-    statCell(2, "BEST",  String(v2brkPB).padStart(6, "0"));
 
-    // Balls segment: label + row of small circles
+    // BEST goes green when player is beating their record
+    const bestCol = (v2brkScore > 0 && v2brkScore >= v2brkPB) ? "#60FF60" : V2BRK_C_STATS_VAL;
+    statCell(2, "BEST", String(v2brkPB).padStart(6, "0"), bestCol);
+
+    // BALLS segment: label + row of overlapping circles
     const ballSegCX   = V2BRK_OX + 3 * segW + segW / 2;
-    const ballSpacing = 12;
+    cx.font      = v2brkFnt(10);
+    cx.fillStyle = V2BRK_C_STATS_LBL;
+    cx.fillText("BALLS", ballSegCX, lblY);
+
+    const ballR       = 4;
+    const ballSpacing = 8;                              // slightly overlapping to fit up to 9
     const ballsW      = (v2brkBalls - 1) * ballSpacing;
     const ballsStartX = ballSegCX - ballsW / 2;
-    const ballsY      = V2BRK_STATS_VAL_Y - 4;
-
-    cx.font      = v2brkFnt(12);
-    cx.fillStyle = V2BRK_C_STATS_LBL;
-    cx.fillText("BALLS", ballSegCX, V2BRK_STATS_LBL_Y);
+    const ballsY      = valY - ballR - 1;
 
     for (let i = 0; i < v2brkBalls; i++) {
+        const bx = ballsStartX + i * ballSpacing;
         cx.beginPath();
-        cx.arc(ballsStartX + i * ballSpacing, ballsY, 4, 0, Math.PI * 2);
+        cx.arc(bx, ballsY, ballR, 0, Math.PI * 2);
         cx.fillStyle   = V2BRK_C_BALL_MAIN;
         cx.fill();
         cx.strokeStyle = V2BRK_C_STATS_LBL;
@@ -634,22 +685,30 @@ function v2brkDrawStats() {
         cx.stroke();
     }
 
-    cx.textAlign = "left";
+    cx.textAlign    = "left";
+    cx.textBaseline = "alphabetic";
 }
 
-// Subtle dashed line hinting the start of the drag zone
-function v2brkDrawDragHint() {
-    const cx = _v2brkCtx;
-    cx.save();
-    cx.strokeStyle = V2BRK_C_DRAG_LINE;
+// Drag zone — clearly bordered rect below the play area
+function v2brkDrawDragZone() {
+    const cx    = _v2brkCtx;
+    const zoneW = V2BRK_PFW;
+    const zoneH = V2BRK_DZ_BOT - V2BRK_DZ_TOP;
+
+    cx.fillStyle = V2BRK_C_DZ_FILL;
+    cx.fillRect(V2BRK_OX, V2BRK_DZ_TOP, zoneW, zoneH);
+
+    cx.strokeStyle = V2BRK_C_DZ_BORDER;
     cx.lineWidth   = 1;
-    cx.setLineDash([8, 8]);
-    cx.beginPath();
-    cx.moveTo(V2BRK_OX,           V2BRK_DRAG_Y);
-    cx.lineTo(V2BRK_OX + V2BRK_PFW, V2BRK_DRAG_Y);
-    cx.stroke();
-    cx.setLineDash([]);
-    cx.restore();
+    cx.strokeRect(V2BRK_OX + 0.5, V2BRK_DZ_TOP + 0.5, zoneW - 1, zoneH - 1);
+
+    cx.font         = v2brkFnt(12);
+    cx.fillStyle    = V2BRK_C_DZ_LABEL;
+    cx.textAlign    = "center";
+    cx.textBaseline = "middle";
+    cx.fillText("DRAG PADDLE HERE", V2BRK_OX + zoneW / 2, V2BRK_DZ_TOP + zoneH / 2);
+    cx.textAlign    = "left";
+    cx.textBaseline = "alphabetic";
 }
 
 // Semi-transparent overlay over the block + travel zone (above paddle)
@@ -676,16 +735,110 @@ function v2brkOverlay(line1, col1, line2, col2) {
     cx.textAlign = "left";
 }
 
+// Full-canvas game-over / win results screen (§15c style, adapted for 960×640)
+function v2brkDrawGameOver(headline) {
+    const cx   = _v2brkCtx;
+    const midX = V2_CW / 2;
+    const midY = V2_CH / 2;
+
+    // Full-canvas dark overlay
+    cx.fillStyle = "rgba(8,8,24,0.88)";
+    cx.fillRect(0, 0, V2_CW, V2_CH);
+
+    // Headline
+    cx.font         = "bold 34px sans-serif";
+    cx.fillStyle    = "#ffffff";
+    cx.textAlign    = "center";
+    cx.textBaseline = "alphabetic";
+    cx.fillText(headline, midX, midY - 72);
+
+    // Sub-label
+    cx.font      = v2brkFnt(14);
+    cx.fillStyle = "#8888cc";
+    cx.fillText("FINAL SCORE", midX, midY - 28);
+
+    // Score
+    cx.font      = "bold " + v2brkFnt(52);
+    cx.fillStyle = "#f0d020";
+    cx.fillText(String(v2brkScore).padStart(6, "0"), midX, midY + 26);
+
+    // PB line — only shown if a PB is recorded
+    if (v2brkPB > 0) {
+        if (v2brkNewBest) {
+            cx.font      = "bold " + v2brkFnt(14);
+            cx.fillStyle = "#60ff60";
+            cx.fillText("NEW BEST! \u2B50", midX, midY + 58);
+        } else {
+            cx.font      = v2brkFnt(12);
+            cx.fillStyle = "#6666aa";
+            cx.fillText("BEST: " + String(v2brkPB).padStart(6, "0"), midX, midY + 58);
+        }
+    }
+
+    // Play Again button
+    const btnW    = 200, btnH = 52, btnR = 14;
+    const btnX    = midX - btnW / 2;
+    const btnY    = midY + 68;
+    const locked  = v2brkOverLockMs < 1000;
+
+    cx.beginPath();
+    cx.moveTo(btnX + btnR, btnY);
+    cx.lineTo(btnX + btnW - btnR, btnY);
+    cx.arcTo(btnX + btnW, btnY, btnX + btnW, btnY + btnR, btnR);
+    cx.lineTo(btnX + btnW, btnY + btnH - btnR);
+    cx.arcTo(btnX + btnW, btnY + btnH, btnX + btnW - btnR, btnY + btnH, btnR);
+    cx.lineTo(btnX + btnR, btnY + btnH);
+    cx.arcTo(btnX, btnY + btnH, btnX, btnY + btnH - btnR, btnR);
+    cx.lineTo(btnX, btnY + btnR);
+    cx.arcTo(btnX, btnY, btnX + btnR, btnY, btnR);
+    cx.closePath();
+    cx.fillStyle   = locked ? "#222222" : "#1a5a1a";
+    cx.fill();
+    cx.strokeStyle = locked ? "#555555" : "#50c050";
+    cx.lineWidth   = 2;
+    cx.stroke();
+
+    cx.font         = "bold 20px sans-serif";
+    cx.fillStyle    = "#ffffff";
+    cx.textBaseline = "middle";
+    cx.fillText(locked ? "WAIT..." : "PLAY AGAIN", midX, btnY + btnH / 2);
+
+    cx.textAlign    = "left";
+    cx.textBaseline = "alphabetic";
+}
+
+function v2brkDrawBg() {
+    const cx = _v2brkCtx;
+    if (_v2brkBgLoaded && SHELL_isBgEnabled()) {
+        // Cover-fill: centre-crop the image to fill the full 960×640 canvas
+        const iw    = _v2brkBgImg.naturalWidth;
+        const ih    = _v2brkBgImg.naturalHeight;
+        const scale = Math.max(V2_CW / iw, V2_CH / ih);
+        const sw    = V2_CW / scale;
+        const sh    = V2_CH / scale;
+        const sx    = (iw - sw) / 2;
+        const sy    = (ih - sh) / 2;
+        cx.drawImage(_v2brkBgImg, sx, sy, sw, sh, 0, 0, V2_CW, V2_CH);
+    } else {
+        cx.fillStyle = V2BRK_C_BG;
+        cx.fillRect(0, 0, V2_CW, V2_CH);
+    }
+}
+
 function v2brkDraw() {
     const cx = _v2brkCtx;
 
-    // Full canvas background
-    cx.fillStyle = V2BRK_C_BG;
-    cx.fillRect(0, 0, V2_CW, V2_CH);
+    // Full canvas background (image or solid fallback)
+    v2brkDrawBg();
 
     // Play field background (block area + ball travel + just below paddle)
     cx.fillStyle = V2BRK_C_PF_BG;
     cx.fillRect(V2BRK_OX, 0, V2BRK_PFW, V2BRK_PLAY_CLIP_H);
+
+    // HUD stats strip — overdraws the top portion with its own styled background
+    if (v2brkState >= V2BRK_S_READY) {
+        v2brkDrawStats();
+    }
 
     // Clip all in-field drawing to the play column
     cx.save();
@@ -741,7 +894,7 @@ function v2brkDraw() {
         case V2BRK_S_BALLLOST:
             v2brkDrawBoard();
             v2brkDrawPaddle();
-            v2brkOverlay("BALL LOST", V2BRK_C_GAMEOVER, null, null);
+            v2brkOverlay("BALL LOST", V2BRK_C_GAMEOVER, v2brkBalls + " ball" + (v2brkBalls === 1 ? "" : "s") + " remaining", V2BRK_C_OV_SUB);
             break;
 
         case V2BRK_S_CLEAR:
@@ -750,28 +903,32 @@ function v2brkDraw() {
             break;
 
         case V2BRK_S_GAMEOVER:
-            v2brkOverlay(
-                "GAME OVER", V2BRK_C_GAMEOVER,
-                v2brkNewBest ? "NEW BEST SCORE!" : "Press RESET to try again",
-                v2brkNewBest ? V2BRK_C_NEWBEST : V2BRK_C_OV_SUB
-            );
+            v2brkDrawBoard();
+            v2brkDrawPaddle();
             break;
 
         case V2BRK_S_COMPLETE:
-            v2brkOverlay(
-                "YOU WIN!", V2BRK_C_CLEAR,
-                v2brkNewBest ? "NEW BEST SCORE!" : "Press RESET to play again",
-                v2brkNewBest ? V2BRK_C_NEWBEST : V2BRK_C_OV_SUB
-            );
+            v2brkDrawBoard();
             break;
     }
 
     cx.restore();   // end play-field clip
 
-    // Stats + drag hint drawn outside clip, only once a game is in progress
-    if (v2brkState >= V2BRK_S_READY) {
-        v2brkDrawStats();
-        v2brkDrawDragHint();
+    // Full-canvas game-over / win overlay — drawn after clip restore so it covers the full canvas
+    if (v2brkState === V2BRK_S_GAMEOVER) v2brkDrawGameOver("GAME OVER");
+    if (v2brkState === V2BRK_S_COMPLETE) v2brkDrawGameOver("YOU WIN!");
+
+    // Separator + drag zone — drawn outside clip once game is in progress
+    if (v2brkState >= V2BRK_S_READY &&
+        v2brkState !== V2BRK_S_GAMEOVER &&
+        v2brkState !== V2BRK_S_COMPLETE) {
+        cx.strokeStyle = V2BRK_C_SEP;
+        cx.lineWidth   = 1;
+        cx.beginPath();
+        cx.moveTo(V2BRK_OX,             V2BRK_SEP_Y);
+        cx.lineTo(V2BRK_OX + V2BRK_PFW, V2BRK_SEP_Y);
+        cx.stroke();
+        v2brkDrawDragZone();
     }
 }
 
@@ -779,15 +936,25 @@ function v2brkDraw() {
 // GAME INTERFACE
 // =============================================================================
 const GAME = {
-    title:      "Breakout",
+    title:      "Space Blocks",
     resetLabel: "RESET",
 
     init(canvas) {
         _v2brkCtx    = canvas.getContext("2d");
         _v2brkCanvas = canvas;
-        v2brkPB      = SHELL_getPB(V2BRK_PB_KEY) || 0;
+        // Load PB — migrate from legacy "breakout_score" key if new key is absent
+        v2brkPB = SHELL_getPB(V2BRK_PB_KEY) || 0;
+        if (v2brkPB === 0) {
+            const legacy = SHELL_getPB(V2BRK_PB_KEY_LEGACY) || 0;
+            if (legacy > 0) { v2brkPB = legacy; SHELL_setPB(V2BRK_PB_KEY, legacy); }
+        }
         v2brkState   = V2BRK_S_LOADING;
         v2brkLoadLevels();
+
+        // Background image (space art — 960×640 recommended)
+        _v2brkBgImg     = new Image();
+        _v2brkBgImg.onload = function() { _v2brkBgLoaded = true; };
+        _v2brkBgImg.src = "space-blocks/bg.jpg";
 
         // Pointer lock for free mouse tracking on desktop
         document.addEventListener("pointerlockchange", v2brkOnLockChange);
@@ -821,6 +988,12 @@ const GAME = {
 
     update(dt) {
         if (v2brkState === V2BRK_S_LOADING) return;
+
+        // Game over / complete — tick button lock timer, nothing else
+        if (v2brkState === V2BRK_S_GAMEOVER || v2brkState === V2BRK_S_COMPLETE) {
+            v2brkOverLockMs += dt;
+            return;
+        }
 
         // Timed state transitions (BALLLOST, CLEAR)
         if (v2brkStateTmr > 0) {
@@ -860,18 +1033,31 @@ const GAME = {
 
     draw() { v2brkDraw(); },
 
-    // Tap / click — launch ball from READY state.
-    // Also re-acquires pointer lock in case player pressed Escape during READY.
+    // Tap / click — launch ball from READY, or hit Play Again on end screens.
     onClick(mx, my) {
         if (v2brkState === V2BRK_S_READY) {
             v2brkLockMouse();
             v2brkLaunch();
+            return;
+        }
+        if (v2brkState === V2BRK_S_GAMEOVER || v2brkState === V2BRK_S_COMPLETE) {
+            if (v2brkOverLockMs < 1000) return;
+            // Hit-test the Play Again button (200×52, centred, top y = V2_CH/2 + 68)
+            const btnW  = 200, btnH = 52;
+            const btnX  = V2_CW / 2 - btnW / 2;
+            const btnY  = V2_CH / 2 + 68;
+            if (mx >= btnX && mx <= btnX + btnW && my >= btnY && my <= btnY + btnH) {
+                v2brkStartGame();
+                v2brkLockMouse();
+            }
         }
     },
 
     // Drag (touchmove or held mouse via shell) — move paddle.
+    // Input outside the drag zone rect is ignored.
     // On desktop the pointer-lock path handles free mouse; this covers touch.
     onDrag(mx, my) {
+        if (my < V2BRK_DZ_TOP || my > V2BRK_DZ_BOT) return;
         if (v2brkState === V2BRK_S_READY || v2brkState === V2BRK_S_PLAYING) {
             v2brkPadX = mx;
             v2brkClampPad();
