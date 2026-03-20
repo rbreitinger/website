@@ -33,7 +33,7 @@ sub main()
   
   '' load stages
   fh = freefile()
-  open "breakout.lev" for input as #fh 
+  open "space-blocks.lev" for input as #fh 
     for st as long = 0 to NUMSTAGES-1
       for y as long = 0 to 9
         for x as long = 0 to 9
@@ -138,7 +138,7 @@ sub main()
   
   '' save stages
   fh = freefile()
-  open "breakout.lev" for output as #fh 
+  open "space-blocks.lev" for output as #fh 
     for st as long = 0 to NUMSTAGES-1
       for y as long = 0 to 9
         for x as long = 0 to 9
