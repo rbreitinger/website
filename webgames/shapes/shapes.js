@@ -103,10 +103,6 @@ SHP_BG.onload    = () => { shpBgReady = true; };
 SHP_BG.src       = "shapes/bg.jpg";
 
 // ---------- sound effects ----------
-// Drop these .ogg files into webgames/shapes/ :
-//   snd_rotate.ogg  snd_grab.ogg    snd_invalid.ogg  snd_place.ogg
-//   snd_clear1.ogg  snd_clear2.ogg  snd_clear3.ogg   snd_clear4.ogg
-//   snd_gameover.ogg
 const SHP_SND_ROTATE   = new Audio("shapes/snd_rotate.ogg");
 const SHP_SND_GRAB     = new Audio("shapes/snd_grab.ogg");
 const SHP_SND_INVALID  = new Audio("shapes/snd_invalid.ogg");
@@ -159,11 +155,6 @@ const GAME = {
             if(e.button !== 0)               return;
             if(_hitRotBtn(mx, my))           { _rotatePiece(); return; }
             if(_hitActiveTray(mx, my))       _startDrag(mx, my);
-        });
-
-        // Finalise drag even when cursor leaves canvas
-        document.addEventListener("mouseup", () => {
-            if(shpDragging) _tryPlace();
         });
 
         _cv.addEventListener("mousemove", e => {
@@ -225,6 +216,10 @@ const GAME = {
             const by = Math.floor(V2_CH / 2) + 68;
             if(mx >= bx && mx <= bx + 200 && my >= by && my <= by + 52) GAME.start();
         }
+    },
+
+    onDragEnd(mx, my) {
+        if(shpDragging) _tryPlace();
     },
 
     onDrag(mx, my) {
