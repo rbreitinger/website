@@ -27,8 +27,8 @@ Plain HTML, CSS and JavaScript. Runs anywhere, on anything.
 ```
 index.html          → main catalogue / landing page
 game.html           → legacy game shell (v1)
-game-v2.html        → improved game shell (v2)
-game-phone.html     → mobile-first phone shell (current)
+game-v2.html        → improved game shell for pc and tablet in landscape orientation
+game-phone.html     → game shell for mobile games in portrait orientation
 webgames/           → individual game folders
 assets/             → shared images and resources
 ```
