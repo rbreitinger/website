@@ -1,16 +1,21 @@
 // =============================================================================
-// 15puzzle.js  —  shell-compatible version
+// 15puzzle.js  —  phone shell version  (PHN_CW=360  PHN_CH=596)
 // Exposes: const GAME = { title, subtitle, init, start, reset, update, draw, onClick }
 // =============================================================================
 
 // ---------- board geometry ----------
-const PZ_COLS = 4, PZ_ROWS = 4, PZ_TILE = 64;
-const PZ_BW   = PZ_COLS * PZ_TILE;
-const PZ_BH   = PZ_ROWS * PZ_TILE;
-const PZ_BX   = SHELL_PFX + Math.floor((SHELL_PFW - PZ_BW) / 2);
-const PZ_BY   = SHELL_PFY + Math.floor((SHELL_PFH - PZ_BH) / 2);
+const PZ_COLS  = 4;
+const PZ_ROWS  = 4;
+const PZ_TILE  = 90;                     // PHN_CW / PZ_COLS — fills full canvas width
+const PZ_BRD   = 3;                      // tile inset / border px
 
-// ---------- tile palette (index 0 unused; values 1-15 map to PAL[val&15]) ----------
+const PZ_HUD_H = 50;                     // HUD strip height (phone standard §15a)
+const PZ_BW    = PZ_COLS * PZ_TILE;      // 360 — matches PHN_CW exactly
+const PZ_BH    = PZ_ROWS * PZ_TILE;      // 360
+const PZ_BX    = 0;
+const PZ_BY    = PZ_HUD_H + Math.floor((PHN_CH - PZ_HUD_H - PZ_BH) / 2);  // 143
+
+// ---------- tile palette (values 1-15 map to PAL[val & 15]) ----------
 const PZ_PAL = [
     "#000000","#0000AA","#00AA00","#00AAAA",
     "#AA0000","#AA00AA","#AA5500","#AAAAAA",
@@ -25,12 +30,18 @@ const PZ_ST_IDLE    = 0;
 const PZ_ST_PLAYING = 1;
 
 // ---------- state ----------
-let _pzState = PZ_ST_IDLE;
-let _pzTiles = new Array(16);
-let _pzMoves = 0, _pzSolved = false;
-let _pzElapsedMs = 0, _pzStartMs = 0;
-let _pzPb = 0;
-let _pzCdActive = false, _pzCdMsLeft = 0, _pzCdShown = 0;
+let _pzState      = PZ_ST_IDLE;
+let _pzTiles      = new Array(16);
+let _pzMoves      = 0;
+let _pzSolved     = false;
+let _pzNewBest    = false;
+let _pzElapsedMs  = 0;
+let _pzStartMs    = 0;
+let _pzPb         = 0;
+let _pzCdActive   = false;
+let _pzCdMsLeft   = 0;
+let _pzCdShown    = 0;
+let _pzOverLockMs = 0;
 let _pzCx;
 
 // SOUND EFFECT
@@ -41,7 +52,7 @@ const PZ_SND_MOVE = new Audio("15puzzle/pz_move.ogg");
 // =============================================================================
 const GAME = {
     title:    "15 Puzzle",
-    subtitle: "Tap or click a tile to slide it",
+    subtitle: "Tap a tile adjacent to the gap to slide it",
 
     init(canvas){
         _pzCx    = canvas.getContext("2d");
@@ -65,6 +76,7 @@ const GAME = {
 
     update(dt){
         if(_pzState === PZ_ST_IDLE) return;
+        if(_pzSolved){ _pzOverLockMs += dt; return; }
         if(_pzCdActive){
             _pzCdMsLeft -= dt;
             if(_pzCdMsLeft <= 0){
@@ -75,14 +87,24 @@ const GAME = {
             }
             return;
         }
-        if(!_pzSolved) _pzElapsedMs = performance.now() - _pzStartMs;
+        _pzElapsedMs = performance.now() - _pzStartMs;
     },
 
     draw(){ _pzDraw(); },
 
-    // called by shell for canvas clicks/taps outside shell buttons
     onClick(mx, my){
-        if(_pzState === PZ_ST_IDLE || _pzCdActive || _pzSolved) return;
+        // PLAY AGAIN while solved
+        if(_pzSolved){
+            if(_pzOverLockMs < 1000) return;
+            const btnX = Math.floor((PHN_CW - 200) / 2);
+            const btnY = Math.floor(PHN_CH / 2) + 68;
+            if(mx >= btnX && mx < btnX + 200 && my >= btnY && my < btnY + 52){
+                _pzState = PZ_ST_PLAYING;
+                _pzNewGame();
+            }
+            return;
+        }
+        if(_pzState === PZ_ST_IDLE || _pzCdActive) return;
         if(mx < PZ_BX || mx >= PZ_BX + PZ_BW ||
            my < PZ_BY || my >= PZ_BY + PZ_BH) return;
         const col = Math.floor((mx - PZ_BX) / PZ_TILE);
@@ -96,8 +118,10 @@ const GAME = {
 // =============================================================================
 function _pzNewGame(){
     _pzShuffle();
-    _pzMoves = 0; _pzSolved = false; _pzElapsedMs = 0;
-    _pzCdActive = true; _pzCdMsLeft = PZ_CD_MS; _pzCdShown = Math.ceil(PZ_CD_MS / 1000);
+    _pzMoves = 0; _pzSolved = false; _pzNewBest = false;
+    _pzElapsedMs = 0; _pzOverLockMs = 0;
+    _pzCdActive = true; _pzCdMsLeft = PZ_CD_MS;
+    _pzCdShown  = Math.ceil(PZ_CD_MS / 1000);
 }
 
 function _pzShuffle(){
@@ -135,105 +159,258 @@ function _pzTryMove(idx){
     if(Math.abs(r1 - r2) + Math.abs(c1 - c2) !== 1) return;
     [_pzTiles[ei], _pzTiles[idx]] = [_pzTiles[idx], _pzTiles[ei]];
     _pzMoves++;
-    
-    if (!SHELL_isMuted()) {
-      PZ_SND_MOVE.currentTime = 0;
-      PZ_SND_MOVE.play();
+    if(!SHELL_isMuted()){
+        PZ_SND_MOVE.currentTime = 0;
+        PZ_SND_MOVE.play().catch(() => {});
     }
-     
     if(_pzIsSolved()){
         _pzSolved = true;
+        _pzOverLockMs = 0;
         if(_pzPb === 0 || _pzElapsedMs < _pzPb){
-            _pzPb = _pzElapsedMs;
+            _pzPb      = _pzElapsedMs;
+            _pzNewBest = true;
             SHELL_setPB("15p_time", _pzPb);
         }
     }
 }
 
 // =============================================================================
-// DRAWING
+// DRAWING HELPERS
 // =============================================================================
 function _pzUf(sz){ return sz + "px Consolas,\"Lucida Console\",\"Courier New\",monospace"; }
 
+// Blend a hex colour toward white by amt (0–1)
+function _pzBrighten(hex, amt){
+    let r = parseInt(hex.slice(1,3), 16);
+    let g = parseInt(hex.slice(3,5), 16);
+    let b = parseInt(hex.slice(5,7), 16);
+    r = Math.min(255, Math.round(r + (255 - r) * amt));
+    g = Math.min(255, Math.round(g + (255 - g) * amt));
+    b = Math.min(255, Math.round(b + (255 - b) * amt));
+    return "#" + r.toString(16).padStart(2,"0")
+               + g.toString(16).padStart(2,"0")
+               + b.toString(16).padStart(2,"0");
+}
+
+// Blend a hex colour toward black by amt (0–1)
+function _pzDarken(hex, amt){
+    let r = parseInt(hex.slice(1,3), 16);
+    let g = parseInt(hex.slice(3,5), 16);
+    let b = parseInt(hex.slice(5,7), 16);
+    r = Math.max(0, Math.round(r * (1 - amt)));
+    g = Math.max(0, Math.round(g * (1 - amt)));
+    b = Math.max(0, Math.round(b * (1 - amt)));
+    return "#" + r.toString(16).padStart(2,"0")
+               + g.toString(16).padStart(2,"0")
+               + b.toString(16).padStart(2,"0");
+}
+
+// Compat rounded-rect path (avoids ctx.roundRect which is ES2023)
+function _pzRoundRect(cx, x, y, w, h, r){
+    cx.beginPath();
+    cx.moveTo(x + r, y);
+    cx.lineTo(x + w - r, y);
+    cx.arcTo(x + w, y,     x + w, y + r,     r);
+    cx.lineTo(x + w, y + h - r);
+    cx.arcTo(x + w, y + h, x + w - r, y + h, r);
+    cx.lineTo(x + r, y + h);
+    cx.arcTo(x,      y + h, x,       y + h - r, r);
+    cx.lineTo(x, y + r);
+    cx.arcTo(x,      y,     x + r,   y,         r);
+    cx.closePath();
+}
+
+// =============================================================================
+// DRAWING
+// =============================================================================
 function _pzDraw(){
-    _pzCx.fillStyle = CLR_BG;
-    _pzCx.fillRect(0, 0, SHELL_CW, SHELL_CH);
+    _pzCx.fillStyle = "#0d0d1a";
+    _pzCx.fillRect(0, 0, PHN_CW, PHN_CH);
+
+    _pzDrawHud();
+    _pzDrawBoard();
+
+    if(_pzCdActive) _pzDrawCountdown();
+    if(_pzSolved)   _pzDrawSolved();
+}
+
+// ---------- HUD strip (§15a layout: MOVES left | BEST centre | TIME right) ----------
+function _pzDrawHud(){
+    const cx  = _pzCx;
+    const lx  = 16;
+    const mid = Math.floor(PHN_CW / 2);
+    const rx  = PHN_CW - 16;
+
+    cx.fillStyle = "#181830";
+    cx.fillRect(0, 0, PHN_CW, PZ_HUD_H);
+    cx.fillStyle = "#2a2a55";
+    cx.fillRect(0, PZ_HUD_H, PHN_CW, 1);
+
+    const secStr = (_pzElapsedMs / 1000).toFixed(1) + "s";
+    const pbStr  = (_pzPb / 1000).toFixed(1) + "s";
+
+    // labels
+    cx.font         = "11px monospace";
+    cx.textBaseline = "alphabetic";
+    cx.fillStyle    = "#7777aa";
+    cx.textAlign    = "left";    cx.fillText("MOVES", lx,  16);
+    cx.textAlign    = "right";   cx.fillText("TIME",  rx,  16);
+    if(_pzPb > 0){
+        cx.textAlign = "center"; cx.fillText("BEST",  mid, 16);
+    }
+
+    // values
+    cx.font      = "bold 22px monospace";
+    cx.fillStyle = "#ffffff";
+    cx.textAlign = "left";    cx.fillText(String(_pzMoves), lx,  38);
+    cx.textAlign = "right";   cx.fillText(secStr,           rx,  38);
+    if(_pzPb > 0){
+        cx.textAlign = "center"; cx.fillText(pbStr,         mid, 38);
+    }
+
+    cx.textAlign = "left"; cx.textBaseline = "alphabetic";
+}
+
+// ---------- board + tiles ----------
+function _pzDrawBoard(){
+    const cx = _pzCx;
 
     // board background
-    _pzCx.fillStyle = "#111824";
-    _pzCx.fillRect(PZ_BX, PZ_BY, PZ_BW, PZ_BH);
+    cx.fillStyle = "#111824";
+    cx.fillRect(PZ_BX, PZ_BY, PZ_BW, PZ_BH);
 
-    // subtle grid
-    _pzCx.globalAlpha = 0.42;
-    _pzCx.strokeStyle = CLR_BG; _pzCx.lineWidth = 1;
+    // subtle grid lines
+    cx.globalAlpha = 0.42;
+    cx.strokeStyle = "#0d0d1a";
+    cx.lineWidth   = 1;
     for(let i = 0; i <= PZ_COLS; i++){
-        const px = PZ_BX + i * PZ_TILE;
-        _pzCx.beginPath(); _pzCx.moveTo(px, PZ_BY); _pzCx.lineTo(px, PZ_BY + PZ_BH); _pzCx.stroke();
+        const gx = PZ_BX + i * PZ_TILE;
+        cx.beginPath(); cx.moveTo(gx, PZ_BY); cx.lineTo(gx, PZ_BY + PZ_BH); cx.stroke();
     }
     for(let i = 0; i <= PZ_ROWS; i++){
-        const py = PZ_BY + i * PZ_TILE;
-        _pzCx.beginPath(); _pzCx.moveTo(PZ_BX, py); _pzCx.lineTo(PZ_BX + PZ_BW, py); _pzCx.stroke();
+        const gy = PZ_BY + i * PZ_TILE;
+        cx.beginPath(); cx.moveTo(PZ_BX, gy); cx.lineTo(PZ_BX + PZ_BW, gy); cx.stroke();
     }
-    _pzCx.globalAlpha = 1.0;
+    cx.globalAlpha = 1.0;
 
     // tiles
-    _pzCx.save();
-    _pzCx.beginPath(); _pzCx.rect(SHELL_PFX, SHELL_PFY, SHELL_PFW, SHELL_PFH); _pzCx.clip();
     for(let r = 0; r < PZ_ROWS; r++){
         for(let c = 0; c < PZ_COLS; c++){
             const idx = r * PZ_COLS + c;
             const val = _pzTiles[idx];
             const px  = PZ_BX + c * PZ_TILE;
             const py  = PZ_BY + r * PZ_TILE;
+            const tx  = px + PZ_BRD;
+            const ty  = py + PZ_BRD;
+            const tw  = PZ_TILE - PZ_BRD * 2;
+            const th  = PZ_TILE - PZ_BRD * 2;
+
             if(val === PZ_EMPTY){
-                _pzCx.fillStyle = "#111824";
-                _pzCx.fillRect(px + 2, py + 2, PZ_TILE - 4, PZ_TILE - 4);
+                cx.fillStyle = "#111824";
+                cx.fillRect(tx, ty, tw, th);
                 continue;
             }
-            _pzCx.fillStyle = PZ_PAL[val & 15];
-            _pzCx.fillRect(px + 2, py + 2, PZ_TILE - 4, PZ_TILE - 4);
-            _pzCx.fillStyle    = "#000";
-            _pzCx.font         = "bold 22px Consolas,monospace";
-            _pzCx.textAlign    = "center";
-            _pzCx.textBaseline = "middle";
-            _pzCx.fillText(String(val), px + PZ_TILE / 2, py + PZ_TILE / 2);
+
+            // diagonal gradient: top-left bright → bottom-right dark
+            const baseClr = PZ_PAL[val & 15];
+            const grd     = cx.createLinearGradient(tx, ty, tx + tw, ty + th);
+            grd.addColorStop(0, _pzBrighten(baseClr, 0.38));
+            grd.addColorStop(1, _pzDarken(baseClr, 0.38));
+            cx.fillStyle = grd;
+            cx.fillRect(tx, ty, tw, th);
+
+            // number — white with dark outline for contrast on all palette colours
+            cx.font         = "bold 28px Consolas,monospace";
+            cx.textAlign    = "center";
+            cx.textBaseline = "middle";
+            cx.lineWidth    = 3;
+            cx.strokeStyle  = "rgba(0,0,0,0.55)";
+            cx.strokeText(String(val), px + PZ_TILE / 2, py + PZ_TILE / 2);
+            cx.fillStyle    = "#ffffff";
+            cx.fillText(String(val),   px + PZ_TILE / 2, py + PZ_TILE / 2);
         }
     }
-    _pzCx.textAlign = "left"; _pzCx.textBaseline = "alphabetic";
-    _pzCx.restore();
-
-    // sidebar
-    const sec = (_pzElapsedMs / 1000).toFixed(1);
-    _pzCx.fillStyle = "#000"; _pzCx.font = _pzUf(14);
-    _pzCx.textAlign = "left"; _pzCx.textBaseline = "alphabetic";
-    _pzCx.fillText("TIME:  " + sec + "s",                                  SHELL_BTN_X, SHELL_SBY + 18);
-    _pzCx.fillText("MOVES: " + _pzMoves,                                   SHELL_BTN_X, SHELL_SBY + 36);
-    _pzCx.fillText("BEST:  " + (_pzPb > 0 ? (_pzPb/1000).toFixed(1)+"s" : "--"), SHELL_BTN_X, SHELL_SBY + 72);
-
-    if(_pzCdActive) _pzDrawCountdown();
-    if(_pzSolved)   _pzDrawSolved();
+    cx.textAlign = "left"; cx.textBaseline = "alphabetic";
 }
 
+// ---------- countdown overlay (covers play area only, HUD stays visible) ----------
 function _pzDrawCountdown(){
-    _pzCx.globalAlpha = 0.52; _pzCx.fillStyle = "#000";
-    _pzCx.fillRect(SHELL_PFX, SHELL_PFY, SHELL_PFW, SHELL_PFH);
-    _pzCx.globalAlpha = 1.0;
-    _pzCx.textAlign = "center";
-    _pzCx.fillStyle = "#fff"; _pzCx.font = _pzUf(18);
-    _pzCx.fillText("GET READY", SHELL_PFX + SHELL_PFW / 2, SHELL_PFY + SHELL_PFH / 2 - 18);
-    _pzCx.font = _pzUf(40);
-    _pzCx.fillText(String(_pzCdShown), SHELL_PFX + SHELL_PFW / 2, SHELL_PFY + SHELL_PFH / 2 + 28);
-    _pzCx.textAlign = "left";
+    const cx = _pzCx;
+    cx.globalAlpha = 0.55;
+    cx.fillStyle   = "#000000";
+    cx.fillRect(0, PZ_HUD_H + 1, PHN_CW, PHN_CH - PZ_HUD_H - 1);
+    cx.globalAlpha = 1.0;
+    cx.textAlign    = "center";
+    cx.textBaseline = "middle";
+    cx.fillStyle    = "#ffffff";
+    cx.font         = _pzUf(18);
+    cx.fillText("GET READY", PHN_CW / 2, PHN_CH / 2 - 24);
+    cx.font = _pzUf(52);
+    cx.fillText(String(_pzCdShown), PHN_CW / 2, PHN_CH / 2 + 26);
+    cx.textAlign = "left"; cx.textBaseline = "alphabetic";
 }
 
+// ---------- solved / game-over screen (§15c) ----------
 function _pzDrawSolved(){
-    _pzCx.globalAlpha = 0.52; _pzCx.fillStyle = "#000";
-    _pzCx.fillRect(SHELL_PFX, SHELL_PFY, SHELL_PFW, SHELL_PFH);
-    _pzCx.globalAlpha = 1.0;
-    _pzCx.textAlign = "center";
-    _pzCx.fillStyle = "#fff"; _pzCx.font = _pzUf(28);
-    _pzCx.fillText("SOLVED", SHELL_PFX + SHELL_PFW / 2, SHELL_PFY + SHELL_PFH / 2 - 10);
-    _pzCx.fillStyle = "#93a0b3"; _pzCx.font = _pzUf(12);
-    _pzCx.fillText("Press RESET to play again", SHELL_PFX + SHELL_PFW / 2, SHELL_PFY + SHELL_PFH / 2 + 14);
-    _pzCx.textAlign = "left";
+    const cx  = _pzCx;
+    const mcy = Math.floor(PHN_CH / 2);
+
+    // full-canvas dark overlay
+    cx.globalAlpha = 0.88;
+    cx.fillStyle   = "#080818";
+    cx.fillRect(0, 0, PHN_CW, PHN_CH);
+    cx.globalAlpha = 1.0;
+
+    cx.textAlign    = "center";
+    cx.textBaseline = "alphabetic";
+
+    // headline
+    cx.fillStyle = "#ffffff";
+    cx.font      = "bold 34px sans-serif";
+    cx.fillText("SOLVED!", PHN_CW / 2, mcy - 72);
+
+    // sub-label
+    cx.fillStyle = "#8888cc";
+    cx.font      = "14px monospace";
+    cx.fillText("FINAL TIME", PHN_CW / 2, mcy - 28);
+
+    // elapsed time — main result
+    const secStr = (_pzElapsedMs / 1000).toFixed(1) + "s";
+    cx.fillStyle = "#f0d020";
+    cx.font      = "bold 52px monospace";
+    cx.fillText(secStr, PHN_CW / 2, mcy + 26);
+
+    // PB line (hidden until first recorded game)
+    if(_pzPb > 0){
+        if(_pzNewBest){
+            cx.fillStyle = "#60ff60";
+            cx.font      = "bold 14px sans-serif";
+            cx.fillText("NEW BEST! \u2b50", PHN_CW / 2, mcy + 50);
+        } else {
+            const pbStr = (_pzPb / 1000).toFixed(1) + "s";
+            cx.fillStyle = "#6666aa";
+            cx.font      = "12px monospace";
+            cx.fillText("BEST: " + pbStr, PHN_CW / 2, mcy + 50);
+        }
+    }
+
+    // PLAY AGAIN button (1 s lock after solve)
+    const locked = _pzOverLockMs < 1000;
+    const btnW   = 200, btnH = 52;
+    const btnX   = Math.floor((PHN_CW - btnW) / 2);
+    const btnY   = mcy + 68;
+
+    _pzRoundRect(cx, btnX, btnY, btnW, btnH, 14);
+    cx.fillStyle   = locked ? "#222222" : "#1a5a1a";
+    cx.fill();
+    cx.strokeStyle = locked ? "#555555" : "#50c050";
+    cx.lineWidth   = 2;
+    cx.stroke();
+
+    cx.fillStyle    = "#ffffff";
+    cx.font         = "bold 20px sans-serif";
+    cx.textBaseline = "middle";
+    cx.fillText(locked ? "WAIT..." : "PLAY AGAIN", PHN_CW / 2, btnY + btnH / 2);
+
+    cx.textAlign = "left"; cx.textBaseline = "alphabetic";
 }
