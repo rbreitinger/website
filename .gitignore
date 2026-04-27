@@ -2,3 +2,4 @@ config/
 *.log
 .DS_Store
 Thumbs.db
+int_*.*
